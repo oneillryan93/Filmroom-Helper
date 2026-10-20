@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Match Analyzer</title>
+<style>
+:root {
+  --background: #111;
+  --panel: #1b1b1b;
+  --panel-raised: #222;
+  --line: #2c2c2c;
+  --text: #eee;
+  --dim: #999;
+  --accent: #f43f5e;
+  --good: #34d399;
+  --bad: #f87171;
+  --warning: #f59e0b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--background); color: var(--text); }
+main { display: flex; flex-direction: column; gap: 16px; max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+header .subtitle { color: var(--dim); }
+h1 { margin: 0; font-size: 22px; }
+h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 16px; }
+.card { padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+
+button {
+  padding: 7px 12px;
+  background: var(--panel-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--dim); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.link { padding: 0; background: none; border: 0; color: var(--dim); text-decoration: underline; }
+input, select {
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--background);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+input:focus, select:focus { outline: 2px solid #444; outline-offset: 0; }
+code { padding: 0 4px; background: var(--background); border: 1px solid var(--line); border-radius: 4px;
+       font: 12px ui-monospace, Consolas, monospace; }
+details { margin-top: 12px; }
+summary { color: var(--dim); cursor: pointer; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 200px; }
+.dim { color: var(--dim); }
+.small { font-size: 12px; }
+.hidden { display: none !important; }
+.note { margin-top: 6px; color: var(--dim); font-size: 12px; }
+.note.warning { color: var(--warning); }
+.error { display: none; margin-top: 8px; color: var(--bad); font-size: 13px; }
+.error.show { display: block; }
+
+.badge { padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); font-size: 12px;
+         font-weight: 500; }
+.badge.good { color: var(--good); border-color: #1f5d48; }
+.badge.bad { color: var(--bad); border-color: #6b2a2a; }
+.badge.running { color: var(--warning); border-color: #6b4a14; }
+
+/* ---------------------------------------------------------------- environment checks */
+.checks { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: start; margin-bottom: 12px; }
+.check-mark { width: 18px; text-align: center; font-weight: 700; }
+.check-mark.good { color: var(--good); }
+.check-mark.bad { color: var(--bad); }
+.check-name { font-weight: 600; }
+.check-detail { color: var(--dim); font-size: 12px; word-break: break-all; }
+
+/* ---------------------------------------------------------------- options form */
+.options { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.option label { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 600; }
+.option.flag label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.option .help { margin-top: 3px; color: var(--dim); font-size: 12px; }
+.option input[type=text], .option input[type=number] { width: 100%; }
+.option .path-row { display: flex; gap: 6px; }
+.option .path-row input { flex: 1; }
+.command-row { display: flex; gap: 8px; align-items: stretch; margin-top: 12px; }
+.command {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--dim);
+  font: 12px/1.4 ui-monospace, Consolas, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* ---------------------------------------------------------------- the running job */
+.progress { height: 4px; margin: 10px 0; background: var(--line); border-radius: 2px; overflow: hidden; }
+.progress i { display: block; width: 30%; height: 100%; background: var(--accent);
+              animation: slide 1.2s ease-in-out infinite; }
+.progress.stopped i { width: 100%; animation: none; }
+.progress.done i { background: var(--good); }
+.progress.failed i { background: var(--bad); }
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+.log {
+  max-height: 300px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 12px/1.45 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------------------------------------------------------------- past results */
+.run-list { display: flex; flex-direction: column; }
+.run { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.run:first-child { border-top: 0; }
+.run-info { flex: 1; min-width: 220px; }
+.run-title { font-weight: 600; word-break: break-all; }
+
+@media (max-width: 600px) { .options { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Match Analyzer</h1>
+    <span class="subtitle">Find the big moments and every whistle in a match video</span>
+  </header>
+
+  <section class="card" id="environment">
+    <h2>Environment <span class="badge" id="environment-badge">checking…</span></h2>
+    <div class="checks" id="environment-checks"></div>
+    <div class="row">
+      <span class="dim small grow" id="environment-summary"></span>
+      <button id="environment-details-toggle" class="link hidden">Show details</button>
+      <button id="recheck">Re-check</button>
+    </div>
+    <div class="error" id="environment-error"></div>
+  </section>
+
+  <section class="card" id="analyse">
+    <h2>Analyse a match</h2>
+    <div class="row">
+      <select id="video-list" class="grow" aria-label="Videos found"></select>
+      <button id="browse-video">Browse…</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input id="video-path" class="grow" type="text" placeholder="…or paste the full path to a video file" spellcheck="false">
+    </div>
+    <div class="note" id="video-note"></div>
+    <div class="options" id="main-options"></div>
+    <details id="more-options-box"><summary>More options</summary><div class="options" id="more-options"></div></details>
+    <details id="ai-box">
+      <summary>AI add-on <span class="badge" id="ai-badge"></span></summary>
+      <div class="note" id="ai-note"></div>
+      <div class="options" id="ai-options"></div>
+    </details>
+    <div class="command-row">
+      <div class="command" id="command-preview" title="The same run from a terminal in this folder"></div>
+      <button id="copy-command" title="Copy the command">Copy</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="analyse-button" class="primary" disabled>Analyse</button>
+      <button id="reset-options" class="link">Reset options to defaults</button>
+    </div>
+    <div class="error" id="analyse-error"></div>
+  </section>
+
+  <section class="card hidden" id="job-card">
+    <h2><span id="job-title"></span> <span class="badge" id="job-badge"></span></h2>
+    <div class="row"><span id="job-stage" class="grow"></span><span class="dim" id="job-time"></span></div>
+    <div class="progress" id="job-progress"><i></i></div>
+    <div class="row" style="margin-bottom:10px">
+      <button id="cancel-job">Cancel</button>
+      <button id="open-results" class="primary hidden">Open results</button>
+      <button id="open-folder" class="hidden">Open folder</button>
+      <button id="log-toggle" class="link">Show details</button>
+    </div>
+    <pre class="log hidden" id="job-log"></pre>
+  </section>
+
+  <section class="card" id="results">
+    <h2>Results
+      <button id="relearn" class="link small" style="margin-left:auto"
+        title="Retrain the moment ranking from every review.json in your results">Relearn from reviews</button>
+    </h2>
+    <div class="run-list" id="run-list"><span class="dim">No results yet.</span></div>
+    <div class="note">Results open in your browser. Your review (false positives, your own moments and whistles)
+      saves in that browser; use <b>Export review</b> there and save <code>review.json</code> into the run's folder
+      to have the next analysis use it.</div>
+  </section>
+</main>
+<script>
+// The app page. It talks to app.py (on this computer only) to check the environment, build the options form
+// from find_moments.py's own options, run analyses and follow their progress, and open past results.
+//
+// Sections: helpers / environment / options form / choosing a video / running a job / past results / start-up.
+
+"use strict";
+
+// ---------------------------------------------------------------- helpers
+
+const TOKEN = "__TOKEN__";  // filled in by app.py; every API call must carry it
+const $ = id => document.getElementById(id);
+
+const HTML_ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"};
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, char => HTML_ESCAPES[char]);
+}
+
+// GET without a body, POST with one. Throws the server's error message on failure.
+async function api(path, body) {
+  const headers = {"X-Token": TOKEN};
+  const request = body === undefined
+    ? {headers}
+    : {method: "POST", headers: {...headers, "Content-Type": "application/json"}, body: JSON.stringify(body)};
+  const response = await fetch(path, request);
+  const data = await response.json().catch(() => ({error: `HTTP ${response.status}`}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+
+function showError(id, error) {
+  const element = $(id);
+  element.textContent = error ? (error.message || error) : "";
+  element.classList.toggle("show", !!error);
+}
+
+// Remembered options and video, in this browser
+const remembered = {
+  get(name, fallback) {
+    try {
+      const value = localStorage.getItem("ma:" + name);
+      return value === null ? fallback : JSON.parse(value);
+    } catch (error) {
+      return fallback;
+    }
+  },
+  set(name, value) {
+    try { localStorage.setItem("ma:" + name, JSON.stringify(value)); } catch (error) {}
+  },
+};
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.round(seconds));
+  return total >= 60 ? `${Math.floor(total / 60)}m ${total % 60}s` : `${total}s`;
+}
+
+// ---------------------------------------------------------------- environment
+
+const CHECKS = [["python", "Python"], ["libraries", "Libraries"], ["ffmpeg", "ffmpeg"]];
+let environment = null;  // the latest /api/status
+let showCheckDetails = false;
+
+async function refreshEnvironment() {
+  $("environment-badge").textContent = "checking…";
+  $("environment-badge").className = "badge";
+  try {
+    environment = await api("/api/status");
+    showError("environment-error", null);
+  } catch (error) {
+    showError("environment-error", error);
+    return;
+  }
+  renderChecks();
+  renderAiStatus();
+  if (environment.ready) await loadAnalyseForm();
+  updateAnalyseButton();
+}
+
+function renderChecks() {
+  const ready = environment.ready;
+  $("environment-checks").innerHTML = CHECKS.map(([key, name]) => {
+    const check = environment[key];
+    return `<span class="check-mark ${check.ok ? "good" : "bad"}">${check.ok ? "&#10003;" : "&#10007;"}</span>
+      <div><div class="check-name">${name}</div><div class="check-detail">${escapeHtml(check.detail)}</div></div>`;
+  }).join("");
+  $("environment-badge").textContent = ready ? "ready" : "not ready";
+  $("environment-badge").className = "badge " + (ready ? "good" : "bad");
+  // uv installs everything before the app starts, so a failed check means it was started some other way.
+  // When all is well there's nothing to act on, so the checks fold away to one line.
+  $("environment-summary").innerHTML = ready
+    ? `${escapeHtml(environment.python.detail)} &middot; ${escapeHtml(environment.libraries.detail)} &middot; ffmpeg bundled`
+    : `This app wasn't started by uv. Close its console window, then start it with the Match Analyzer launcher,
+       or run <code>uv run app.py</code> in this folder: uv installs what's missing.`;
+  $("environment-checks").classList.toggle("hidden", ready && !showCheckDetails);
+  $("environment-details-toggle").classList.toggle("hidden", !ready);
+  $("analyse").classList.toggle("hidden", !ready);
+}
+
+function renderAiStatus() {
+  const installed = (environment.ai || {}).installed;
+  $("ai-badge").textContent = installed ? "installed" : "not installed";
+  $("ai-badge").className = "badge" + (installed ? " good" : "");
+  $("ai-note").innerHTML = "Runs locally on this computer, nothing is uploaded anywhere." +
+    (installed ? "" : " Ticking <b>Read the scoreboard</b> installs it on your next Analyse (about 100 MB, once).") +
+    " <b>Learn from my reviews</b> needs no download: it learns from the review.json files in your results.";
+}
+
+$("environment-details-toggle").onclick = () => {
+  showCheckDetails = !showCheckDetails;
+  $("environment-checks").classList.toggle("hidden", !showCheckDetails);
+  $("environment-details-toggle").textContent = showCheckDetails ? "Hide details" : "Show details";
+};
+$("recheck").onclick = refreshEnvironment;
+
+// ---------------------------------------------------------------- options form
+// Built from find_moments.py's own options (via /api/options), so it always matches the script.
+
+const MAIN_OPTIONS = ["max_moments", "min_score", "whistle_db", "chapters", "hwaccel"];
+const AI_OPTIONS = ["scoreboard", "learn", "scoreboard_region"];  // shown in the AI add-on section
+const HIDDEN_OPTIONS = ["learn_only"];  // an action (the Relearn button), not a run option
+const PATH_OPTIONS = {out: "folder", review: "file", truth: "file", whistle_truth: "file"};  // get a Browse button
+const OPTION_LABELS = {
+  max_moments: "Most moments", min_gap: "Gap between moments (s)", min_score: "Moment threshold",
+  before: "Moment lead-in (s)", after: "Moment highlight (s)", weights: "Cue weights",
+  hwaccel: "Decode on the GPU", chapters: "Also write a video with chapters",
+  whistle_db: "Whistle threshold (dB)", whistle_pitch: "Whistle pitch (Hz)", whistle_before: "Whistle lead-in (s)",
+  truth: "Moment truth file", tolerance: "Truth tolerance (s)", whistle_truth: "Whistle truth file",
+  review: "Review file", out: "Output folder", scoreboard: "Read the scoreboard", learn: "Learn from my reviews",
+  scoreboard_region: "Scoreboard position (x,y,w,h)",
+};
+
+let scriptOptions = [];  // from /api/options: {dest, flag, default, help, kind}
+let formLoaded = false;
+
+function labelFor(option) {
+  return OPTION_LABELS[option.dest] || option.dest.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+}
+
+function renderOptionField(option, saved) {
+  const field = document.createElement("div");
+  field.className = "option" + (option.kind === "flag" ? " flag" : "");
+  const id = "option-" + option.dest;
+  const label = escapeHtml(labelFor(option)), help = `<div class="help">${escapeHtml(option.help)}</div>`;
+  if (option.kind === "flag") {
+    field.innerHTML = `<label><input type="checkbox" id="${id}">${label}</label>${help}`;
+    field.querySelector("input").checked = saved[option.dest] === true;
+    return field;
+  }
+  const hasDefault = option.default !== null && option.default !== undefined;
+  const placeholder = hasDefault ? `default ${option.default}` : "";
+  const input = option.kind === "str"
+    ? `<input type="text" id="${id}" placeholder="${escapeHtml(placeholder)}" spellcheck="false">`
+    : `<input type="number" id="${id}" placeholder="${escapeHtml(placeholder)}" step="${option.kind === "int" ? "1" : "any"}">`;
+  const pathKind = PATH_OPTIONS[option.dest];
+  const control = pathKind
+    ? `<div class="path-row">${input}<button data-choose="${pathKind}" data-for="${id}">Browse…</button></div>`
+    : input;
+  field.innerHTML = `<label for="${id}">${label}</label>${control}${help}`;
+  field.querySelector("input").value = saved[option.dest] ?? "";
+  return field;
+}
+
+function renderOptions() {
+  const saved = remembered.get("options", {});
+  const inOrder = list => (a, b) => list.indexOf(a.dest) - list.indexOf(b.dest);
+  const visible = scriptOptions.filter(o => o.flag && !HIDDEN_OPTIONS.includes(o.dest));
+  const sections = [
+    ["ai-options", visible.filter(o => AI_OPTIONS.includes(o.dest)).sort(inOrder(AI_OPTIONS))],
+    ["main-options", visible.filter(o => MAIN_OPTIONS.includes(o.dest)).sort(inOrder(MAIN_OPTIONS))],
+    ["more-options", visible.filter(o => !MAIN_OPTIONS.includes(o.dest) && !AI_OPTIONS.includes(o.dest))],
+  ];
+  for (const [container, options] of sections) {
+    $(container).innerHTML = "";
+    for (const option of options) $(container).append(renderOptionField(option, saved));
+  }
+  $("ai-box").open = AI_OPTIONS.some(name => saved[name]);
+  document.querySelectorAll("[data-choose]").forEach(button => {
+    button.onclick = async () => {
+      try {
+        const {path} = await api("/api/pick", {kind: button.dataset.choose});
+        if (path) { $(button.dataset.for).value = path; optionsChanged(); }
+      } catch (error) {
+        showError("analyse-error", error);
+      }
+    };
+  });
+  document.querySelectorAll(".option input").forEach(input => input.addEventListener("input", optionsChanged));
+}
+
+// The form's values: only the options you've set
+function readOptions() {
+  const values = {};
+  for (const option of scriptOptions.filter(o => o.flag)) {
+    const input = $("option-" + option.dest);
+    if (!input) continue;
+    if (option.kind === "flag") {
+      if (input.checked) values[option.dest] = true;
+    } else if (input.value.trim() !== "") {
+      values[option.dest] = option.kind === "str" ? input.value.trim() : Number(input.value);
+    }
+  }
+  return values;
+}
+
+function quoteForShell(text) {
+  return /[\s"]/.test(text) ? `"${String(text).replace(/"/g, '\\"')}"` : String(text);
+}
+
+// The same run as a terminal command, leaving out options at their defaults (as app.py does)
+function commandPreview(values) {
+  const args = [];
+  for (const option of scriptOptions.filter(o => o.flag)) {
+    const value = values[option.dest];
+    if (value === undefined) continue;
+    if (option.kind === "flag") {
+      args.push(option.flag);
+      continue;
+    }
+    const noDefault = option.default === null || option.default === undefined;
+    if (noDefault || (Number(value) !== Number(option.default) && value !== option.default)) {
+      args.push(option.flag, quoteForShell(value));
+    }
+  }
+  const video = quoteForShell($("video-path").value.trim() || "<video>");
+  return `uv run find_moments.py ${video} ${args.join(" ")}`.trim();
+}
+
+function optionsChanged() {
+  const values = readOptions();
+  remembered.set("options", values);
+  remembered.set("video", $("video-path").value);
+  $("command-preview").textContent = commandPreview(values);
+  describeVideo();
+  updateAnalyseButton();
+}
+
+$("reset-options").onclick = () => {
+  remembered.set("options", {});
+  renderOptions();
+  optionsChanged();
+};
+$("copy-command").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($("command-preview").textContent);
+    $("copy-command").textContent = "Copied";
+  } catch (error) {
+    $("copy-command").textContent = "Select it and copy";
+  }
+  setTimeout(() => { $("copy-command").textContent = "Copy"; }, 1500);
+};
+
+// ---------------------------------------------------------------- choosing a video
+
+let videos = [];  // found on this computer, from /api/videos
+let runs = [];    // past results, from /api/runs
+
+function fileStem(path) {
+  return path.split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+}
+
+// Where the results will go, and a warning if that replaces an earlier run
+function describeVideo() {
+  const video = $("video-path").value.trim();
+  const note = $("video-note");
+  if (!video) { note.textContent = ""; return; }
+  const values = readOptions();
+  const folderName = values.out ? values.out.split(/[\\/]/).pop() : fileStem(video) + "_moments";
+  const earlier = runs.find(run => run.name === folderName);
+  note.className = "note" + (earlier ? " warning" : "");
+  if (earlier) {
+    note.textContent = "This video has been analysed before: running again replaces those results" +
+      (earlier.review ? " (the review.json in that folder is kept and used)." : ".");
+  } else {
+    note.textContent = `Results will go in ${values.out || (environment ? environment.home : "") + "\\" + folderName}`;
+  }
+}
+
+function renderVideoList() {
+  const current = $("video-path").value.trim();
+  const prompt = videos.length ? "Videos found on this computer…" : "No videos found: use Browse…";
+  $("video-list").innerHTML = `<option value="">${prompt}</option>` + videos.map(video =>
+    `<option value="${escapeHtml(video.path)}" ${video.path === current ? "selected" : ""}>` +
+    `${escapeHtml(video.name)}  (${video.size_mb} MB, ${escapeHtml(video.folder)})</option>`).join("");
+}
+
+$("video-list").onchange = change => {
+  if (change.target.value) { $("video-path").value = change.target.value; optionsChanged(); }
+};
+$("video-path").addEventListener("input", () => { renderVideoList(); optionsChanged(); });
+$("browse-video").onclick = async () => {
+  try {
+    const {path} = await api("/api/pick", {kind: "video"});
+    if (path) { $("video-path").value = path; renderVideoList(); optionsChanged(); }
+  } catch (error) {
+    showError("analyse-error", error);
+  }
+};
+
+async function loadAnalyseForm() {
+  if (formLoaded) return;
+  try {
+    const [optionsReply, videosReply] = await Promise.all([api("/api/options"), api("/api/videos")]);
+    scriptOptions = optionsReply.options;
+    videos = videosReply.videos;
+    $("video-path").value = remembered.get("video", "") || (videos[0] ? videos[0].path : "");
+    renderOptions();
+    renderVideoList();
+    optionsChanged();
+    formLoaded = true;
+  } catch (error) {
+    showError("analyse-error", error);
+  }
+}
+
+// ---------------------------------------------------------------- running a job
+
+let job = null;          // the latest job snapshot from app.py
+let logLinesShown = 0;   // how many of its log lines are on screen
+let pollTimer = null;
+
+function updateAnalyseButton() {
+  const busy = job && job.state === "running";
+  const canRun = environment && environment.ready && formLoaded && $("video-path").value.trim();
+  $("analyse-button").disabled = !canRun || busy;
+}
+
+$("analyse-button").onclick = async () => {
+  try {
+    showError("analyse-error", null);
+    const reply = await api("/api/run", {video: $("video-path").value.trim(), options: readOptions()});
+    followJob(reply.job);
+  } catch (error) {
+    showError("analyse-error", error);
+  }
+};
+$("relearn").onclick = async () => {
+  try {
+    followJob((await api("/api/learn", {})).job);
+    if ($("job-log").classList.contains("hidden")) $("log-toggle").click();  // the result is in the log
+  } catch (error) {
+    showError("analyse-error", error);
+  }
+};
+$("cancel-job").onclick = () => api("/api/cancel", {}).catch(error => showError("analyse-error", error));
+$("log-toggle").onclick = () => {
+  const hidden = $("job-log").classList.toggle("hidden");
+  $("log-toggle").textContent = hidden ? "Show details" : "Hide details";
+};
+$("open-results").onclick = () => job && openResult(job.result.out, true);
+$("open-folder").onclick = () => job && openResult(job.result.out, false);
+
+function openResult(folder, viewer) {
+  return api("/api/open", {path: folder, viewer}).catch(error => showError("analyse-error", error));
+}
+
+function followJob(snapshot) {
+  if (!job || snapshot.id !== job.id) {
+    $("job-log").textContent = "";
+    logLinesShown = 0;
+  }
+  job = snapshot;
+  renderJob();
+  clearTimeout(pollTimer);
+  pollJob();
+}
+
+// Ask for new log lines every 0.6 s while the job runs
+async function pollJob() {
+  try {
+    const {job: latest} = await api(`/api/job?since=${logLinesShown}`);
+    if (!latest) return;
+    if (latest.id !== job.id) {  // a different job started (in another tab, say): start its log afresh
+      $("job-log").textContent = "";
+      logLinesShown = 0;
+      job = latest;
+      return pollJob();
+    }
+    appendLog(latest.lines);
+    logLinesShown = latest.total;
+    const wasRunning = job.state === "running";
+    job = latest;
+    renderJob();
+    if (job.state === "running") pollTimer = setTimeout(pollJob, 600);
+    else if (wasRunning) jobFinished();
+  } catch (error) {
+    pollTimer = setTimeout(pollJob, 2000);
+  }
+}
+
+function appendLog(lines) {
+  if (!lines.length) return;
+  const log = $("job-log");
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;  // only follow if you haven't scrolled up
+  log.textContent += lines.join("\n") + "\n";
+  if (atBottom) log.scrollTop = log.scrollHeight;
+}
+
+const JOB_BADGES = {running: ["running", "running"], done: ["done", "good"], failed: ["failed", "bad"],
+                    cancelled: ["cancelled", "bad"]};
+
+function renderJob() {
+  const [badgeText, badgeStyle] = JOB_BADGES[job.state];
+  $("job-card").classList.remove("hidden");
+  $("job-title").textContent = job.title;
+  $("job-badge").textContent = badgeText;
+  $("job-badge").className = "badge " + badgeStyle;
+  $("job-stage").textContent = job.stage || "";
+  $("job-time").textContent = formatDuration((job.ended || Date.now() / 1000) - job.started);
+  const finishedStyle = job.state === "done" ? " stopped done" : " stopped failed";
+  $("job-progress").className = "progress" + (job.state === "running" ? "" : finishedStyle);
+  $("cancel-job").classList.toggle("hidden", job.state !== "running");
+  const hasResults = job.kind === "run" && job.state === "done";
+  $("open-results").classList.toggle("hidden", !hasResults);
+  $("open-folder").classList.toggle("hidden", !hasResults);
+  if (job.state === "failed" && $("job-log").classList.contains("hidden")) $("log-toggle").click();
+  updateAnalyseButton();
+}
+
+async function jobFinished() {
+  if (job.kind === "run") {
+    await loadRuns();
+    await refreshEnvironment();  // the AI add-on may have been installed
+  }
+}
+
+// ---------------------------------------------------------------- past results
+
+async function loadRuns() {
+  try {
+    runs = (await api("/api/runs")).runs;
+  } catch (error) {
+    return;
+  }
+  const list = $("run-list");
+  list.innerHTML = runs.length ? "" : `<span class="dim">No results yet.</span>`;
+  for (const run of runs) list.append(renderRun(run));
+  describeVideo();
+}
+
+function renderRun(run) {
+  const row = document.createElement("div");
+  row.className = "run";
+  const when = new Date(run.updated * 1000).toLocaleString();
+  row.innerHTML = `<div class="run-info">
+      <div class="run-title">${escapeHtml(run.name.replace(/_moments$/, ""))}</div>
+      <div class="dim small">${when} &middot; ${run.moments ?? "?"} moments &middot; ${run.whistles ?? "?"} whistles
+        ${run.review ? ' &middot; <span class="badge good">review.json</span>' : ""}
+        ${run.chapters ? ' &middot; <span class="badge">chapters video</span>' : ""}</div>
+    </div>`;
+  const open = document.createElement("button");
+  open.textContent = "Open";
+  open.className = "primary";
+  open.onclick = () => openResult(run.path, true);
+  const folder = document.createElement("button");
+  folder.textContent = "Folder";
+  folder.onclick = () => openResult(run.path, false);
+  row.append(open, folder);
+  return row;
+}
+
+// ---------------------------------------------------------------- start-up
+
+(async () => {
+  await refreshEnvironment();
+  await loadRuns();
+  const {job: running} = await api("/api/job").catch(() => ({job: null}));
+  if (running && running.state === "running") followJob(running);  // pick up a run started before a reload
+  setInterval(() => {
+    if (job) $("job-time").textContent = formatDuration((job.ended || Date.now() / 1000) - job.started);
+  }, 1000);
+})();
+</script>
+</body>
+</html>

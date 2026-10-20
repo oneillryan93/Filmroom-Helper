@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Match moments</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="player">
+    <video id="video" controls preload="metadata"></video>
+    <!-- shown instead of the video while it plays in its own window -->
+    <div class="video-placeholder hidden" id="video-placeholder">
+      <div>The video is playing in its own window.</div>
+      <div class="button-row">
+        <button id="video-back">Bring it back (V)</button>
+        <button id="video-other-screen" title="Fill another screen with the video window">Move to other screen</button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button id="previous" title="Previous (P)">&#9664; Prev <span class="kind-name">moment</span></button>
+      <button id="next" title="Next (N)">Next <span class="kind-name">moment</span> &#9654;</button>
+      <button id="add" title="Add your own at the current time (A)">+ Add here</button>
+      <button id="pop-out" title="Open the video in its own window, e.g. on another screen (V)">&#10697; Pop out video</button>
+      <span class="key-help">N / P: next / prev &middot; M / W: moments / whistles &middot; A: add &middot;
+        V: pop out video &middot; F: fullscreen &middot; 1&ndash;9: label &middot; R: rename &middot;
+        X: false positive &middot; J / L: &minus;/+10s &middot; K or space: play/pause</span>
+      <span class="now-playing" id="now-playing"></span>
+    </div>
+
+    <div class="add-form" id="add-form">
+      <span>Add your <span id="add-kind">moment</span> at <b id="add-time"></b></span>
+      <input id="add-name" placeholder="Name it, e.g. Try in the corner (optional)" maxlength="80" spellcheck="false">
+      <button id="add-save">Save</button>
+      <button id="add-cancel">Cancel</button>
+    </div>
+
+    <div class="timeline" id="timeline">
+      <canvas id="timeline-canvas"></canvas>
+      <div class="playhead" id="playhead"></div>
+      <div class="hover-time" id="hover-time"></div>
+    </div>
+    <div class="toolbar legend" id="legend"></div>
+  </div>
+
+  <aside class="sidebar">
+    <div class="tabs">
+      <button class="tab selected" id="tab-moments">Moments (<span id="moments-count"></span>)</button>
+      <button class="tab" id="tab-whistles">Whistles (<span id="whistles-count"></span>)</button>
+      <span class="sort-toggle" id="sort-toggle">sort by score</span>
+    </div>
+    <div class="filter-bar" id="filter-bar"></div>
+    <ol class="event-list" id="event-list"></ol>
+    <div class="review-panel">
+      <span class="review-summary" id="review-summary"></span>
+      <button id="export" title="Download review.json for find_moments.py --review">Export review</button>
+      <button id="import">Import</button>
+      <input type="file" id="import-file" accept=".json,application/json" hidden>
+      <span id="saved-status"></span>
+    </div>
+  </aside>
+</div>
+
+<div id="label-picker" role="dialog" aria-label="Labels">
+  <div class="picker-title" id="picker-title"></div>
+  <div id="picker-labels"></div>
+  <div class="button-row">
+    <input id="new-label" placeholder="New label, then Enter" maxlength="40" spellcheck="false">
+    <button id="picker-done">Done</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script id="match-data" type="application/json">{/*DATA*/}</script>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>

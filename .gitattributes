@@ -1,0 +1,4 @@
+# Keep each launcher's line endings whatever computer checks it out:
+# macOS/Linux shells can't run a script with Windows line endings, and .bat files want them.
+*.command text eol=lf
+*.bat     text eol=crlf

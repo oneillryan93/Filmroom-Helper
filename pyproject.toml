@@ -1,0 +1,18 @@
+[project]
+name = "match-analyzer"
+version = "0.0.1"
+description = "Find the big moments and every whistle in a rugby match video"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0",
+    "imageio-ffmpeg>=0.5",  
+]
+
+[project.optional-dependencies]
+ai = [
+    "onnxruntime>=1.23.2",
+    "rapidocr-onnxruntime>=1.4.4",
+]
+
+[tool.uv]
+package = false  # scripts, not an installable package: `uv run app.py` / `uv run find_moments.py match.mp4`

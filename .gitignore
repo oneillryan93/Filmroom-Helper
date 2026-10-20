@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# Set up on each computer by the launchers / the app
+.tools/
+.models/
+
+# Match videos (far too big for git)
+resources/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.m4v
+*.webm
+
+# Results of a run (find_moments.py writes <video name>_moments/ next to the video).
+# To keep a review in git, add it explicitly: git add -f <folder>/review.json
+*_moments/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
