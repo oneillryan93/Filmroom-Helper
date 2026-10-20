@@ -32,6 +32,7 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent
 RESOURCES = PROJECT / "resources"
+OUTPUT = PROJECT / "output"  # results folders (find_moments.py's default too)
 SCRIPT = PROJECT / "find_moments.py"
 PAGE = PROJECT / "app.html"
 DEFAULT_PORT = 8765
@@ -179,9 +180,9 @@ def count_rows(csv_path):
 
 
 def find_runs():
-    """Results folders in the project folder (anything holding the viewer's index.html and a moments.csv)."""
+    """Results folders in output/ (anything holding the viewer's index.html and a moments.csv)."""
     runs = []
-    for folder in PROJECT.iterdir():
+    for folder in OUTPUT.iterdir() if OUTPUT.is_dir() else ():
         if folder.is_dir() and (folder / "index.html").is_file() and (folder / "moments.csv").is_file():
             runs.append({"path": str(folder), "name": folder.name, "updated": (folder / "index.html").stat().st_mtime,
                          "moments": count_rows(folder / "moments.csv"),
@@ -192,7 +193,7 @@ def find_runs():
 
 
 def default_results_folder(video):
-    return PROJECT / (Path(video).stem + "_moments")
+    return OUTPUT / (Path(video).stem + "_moments")
 
 
 # ---------------------------------------------------------------- jobs: one run at a time
@@ -305,7 +306,13 @@ def analysis(video, script_args, results_folder, needs_ai=False):
         job.result = {"out": str(results_folder), "viewer": str(page)}
         ok = exit_code == 0 and page.is_file()
         job.stage = "Finished" if ok else "Failed"
-        job.finish(ok, "" if ok else f"find_moments.py exited with code {exit_code}")
+        if ok:
+            problem = ""
+        elif exit_code != 0:
+            problem = f"find_moments.py exited with code {exit_code}"
+        else:
+            problem = f"find_moments.py finished, but there's no results page at {page}"
+        job.finish(ok, problem)
         if ok and OPEN_IN_BROWSER:
             open_path(page)
     return work
@@ -437,7 +444,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(409, {"error": str(error)})
 
     def get_status(self, query):
-        return {**status(), "home": str(PROJECT), "os": os.name}
+        return {**status(), "home": str(PROJECT), "output": str(OUTPUT), "os": os.name}
 
     def get_options(self, query):
         return {"options": script_options()}
@@ -479,6 +486,8 @@ class Handler(BaseHTTPRequestHandler):
         form = body.get("options") or {}
         script_args = form_to_args(form, script_options())
         results_folder = Path(form["out"]) if form.get("out") else default_results_folder(video)
+        if not form.get("out"):  # say where, so the app always looks for the results where the script puts them
+            script_args += ["--out", str(results_folder)]
         needs_ai = any(form.get(option) for option in AI_OPTIONS)
         work = analysis(video, script_args, results_folder, needs_ai)
         return {"job": start_job("run", f"Analysing {Path(video).name}", work).snapshot()}

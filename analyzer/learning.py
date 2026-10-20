@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .outputs import OUTPUT
 from .scoring import CUES
 
 PROJECT = Path(__file__).resolve().parent.parent
@@ -44,9 +45,10 @@ def window_features(scores_csv):
 
 
 def reviewed_folders(extra_dirs=()):
-    """Every results folder with a review.json and scores.csv: those in the project folder, plus any given."""
+    """Every results folder with a review.json and scores.csv: those in output/, plus any given."""
     folders = {Path(d).resolve() for d in extra_dirs if d}
-    folders |= {d.resolve() for d in PROJECT.iterdir() if d.is_dir() and (d / "review.json").is_file()}
+    if OUTPUT.is_dir():
+        folders |= {d.resolve() for d in OUTPUT.iterdir() if d.is_dir() and (d / "review.json").is_file()}
     return sorted(d for d in folders if (d / "review.json").is_file() and (d / "scores.csv").is_file())
 
 

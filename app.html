@@ -475,7 +475,7 @@ function describeVideo() {
     note.textContent = "This video has been analysed before: running again replaces those results" +
       (earlier.review ? " (the review.json in that folder is kept and used)." : ".");
   } else {
-    note.textContent = `Results will go in ${values.out || (environment ? environment.home : "") + "\\" + folderName}`;
+    note.textContent = `Results will go in ${values.out || (environment ? environment.output : "output") + "\\" + folderName}`;
   }
 }
 

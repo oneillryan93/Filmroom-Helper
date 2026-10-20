@@ -35,6 +35,7 @@ analyzer/
   outputs.py           the CSVs and the chapters video
   scoreboard.py        the optional score-overlay reader
   viewer.py            builds index.html from viewer/page.html, style.css and viewer.js
+output/                every run's results: output/<video name>_moments/ (not in git)
 ```
 
 ---
@@ -164,7 +165,7 @@ The hand-set weights in 3.3 are a guess. Learning swaps that guess for a ranking
 when it can prove it does better.
 
 ### 4.1 Where it learns from
-It uses every results folder in the project that has both a **review.json** (exported from the viewer) and a
+It uses every results folder in `output/` that has both a **review.json** (exported from the viewer) and a
 **scores.csv**. Your reviews become examples:
 
 | Your review | Treated as | Weight |
@@ -221,7 +222,7 @@ placing a moment wherever the score on screen changes. This only occurs of cours
 
 ## Built with
 
-- [FFmpeg](https://ffmpeg.org/) for video and audio decoding. It is called as a separate program and isn't bundled here.
+- [FFmpeg](https://ffmpeg.org/) for video and audio decoding. It is pulled in as a dependency or used as a separate program if found on your local system and isn't bundled here.
 - [NumPy](https://numpy.org/) for the logistic regression and many data tranformation actions.
 - The camera-pan cue uses phase correlation: C. D. Kuglin and D. C. Hines, "The phase correlation image alignment method", *Proc. IEEE Int. Conf. on Cybernetics and Society*, 163–165 (1975).
 

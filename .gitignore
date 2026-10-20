@@ -18,9 +18,9 @@ resources/
 *.m4v
 *.webm
 
-# Results of a run (find_moments.py writes <video name>_moments/ next to the video).
-# To keep a review in git, add it explicitly: git add -f <folder>/review.json
-*_moments/
+# Results of every run (output/<video name>_moments/).
+# To keep a review in git, add it explicitly: git add -f output/<folder>/review.json
+output/
 
 # Editors and OS
 .vscode/

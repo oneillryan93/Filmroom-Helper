@@ -30,7 +30,13 @@ import time
 from analyzer import moments as moment_rows
 from analyzer.audio import read_audio_cues
 from analyzer.ffmpeg import video_duration
-from analyzer.outputs import WHISTLE_FIELDS, write_chapters_video, write_rows_csv, write_scores_csv
+from analyzer.outputs import (
+    WHISTLE_FIELDS,
+    default_results_folder,
+    write_chapters_video,
+    write_rows_csv,
+    write_scores_csv,
+)
 from analyzer.review import load_review, read_times, report, report_against_review
 from analyzer.scoring import combine, parse_weights, pick_peaks, same_length, smooth, spike_score
 from analyzer.timecodes import format_time
@@ -44,7 +50,7 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add = parser.add_argument
     add("video", nargs="?", help="match video file (not needed with --learn-only)")
-    add("--out", help="output folder (default: <video name>_moments)")
+    add("--out", help="results folder (default: output/<video name>_moments in the project folder)")
     add("--max-moments", type=int, default=60, help="most moments to pick")
     add("--min-gap", type=int, default=20, help="seconds between moments")
     add("--min-score", type=float, default=2.0, help="how 'unusual' a second must be to count as a moment")
@@ -152,7 +158,7 @@ def main():
         require()
 
     weights = parse_weights(args.weights)
-    out = args.out or os.path.splitext(os.path.basename(args.video))[0] + "_moments"
+    out = args.out or default_results_folder(args.video)
     os.makedirs(out, exist_ok=True)
     duration = video_duration(args.video)
 

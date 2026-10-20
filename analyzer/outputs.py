@@ -3,11 +3,19 @@
 import csv
 import os
 import subprocess
+from pathlib import Path
 
 from .ffmpeg import FFMPEG
 from .timecodes import format_time
 
+OUTPUT = Path(__file__).resolve().parent.parent / "output"  # every run's results folder goes in here
+
 WHISTLE_FIELDS = ["n", "time", "start_s", "jump_s", "length_s", "peak_db", "name", "labels"]
+
+
+def default_results_folder(video):
+    """output/<video name>_moments in the project folder, wherever the video and the command are."""
+    return str(OUTPUT / (Path(video).stem + "_moments"))
 
 
 def write_scores_csv(path, score, cues, spikes):
