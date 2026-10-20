@@ -2,8 +2,9 @@
 // list, and lets you review them: mark false positives, add your own, label and rename them, and export all of
 // that as review.json for the next run of find_moments.py.
 //
-// Sections, in order: data and helpers / your review / events / the list / filters / label picker / renaming /
-// timeline / playback / adding your own / export and import / the pop-out video window / keyboard / start-up.
+// Sections, in order: data and helpers / your review / events / the score bar / the list / filters / label picker /
+// renaming / timeline / playback / adding your own / export and import / the pop-out video window / keyboard /
+// start-up.
 
 "use strict";
 
@@ -27,6 +28,10 @@ const YOURS_COLOR = "#eeeeee";
 const DIMMED_COLOR = "#555555";  // false positives, and markers the filter hides
 const PRESET_LABELS = ["Positive Play", "Negative Play", "Try - Our Team", "Try - Opponents",
   "Line break - Our Team", "Line break - Opponents", "Good Tackle", "Bad Tackle", "Turnover", "Penalty"];
+// Scoring plays you can set on a moment, and their points (the scoreboard can also give "Score": an odd change)
+const PLAYS = {"Try": 5, "Conversion": 2, "Penalty goal": 3, "Drop goal": 3, "Penalty try": 7, "Converted try": 7};
+const SIDES = ["home", "away"];
+const NO_SCORE = {side: "", play: "", points: 0};  // a review entry saying "no score here"
 const UNLABELLED = "\u0000none";  // the filter key for "no labels yet" (can't clash with a real label)
 const SAME_TIME = 0.5;  // seconds: your review is matched to detections by time
 
@@ -69,6 +74,23 @@ function cleanLabels(list) {
   return [...new Set(list.map(label => String(label).trim()).filter(Boolean))];
 }
 
+// A scoring play as {side, play, points}, or null for no score
+function cleanScoring(raw) {
+  if (!raw || !SIDES.includes(raw.side)) return null;
+  const play = PLAYS[raw.play] ? raw.play : "Score";
+  const points = PLAYS[raw.play] || Math.round(+raw.points);
+  return Number.isFinite(points) ? {side: raw.side, play, points} : null;
+}
+
+function sameScoring(a, b) {
+  return (!a && !b) || (a && b && a.side === b.side && a.play === b.play && a.points === b.points);
+}
+
+// [home, away] from a saved review, or null
+function cleanPair(raw, clean) {
+  return Array.isArray(raw) && raw.length === 2 ? raw.map(clean) : null;
+}
+
 // The detections from find_moments.py. Each gets three times: `at` is where its marker goes, `jump_s` where
 // playback starts when you pick it, and `until` when its highlight ends.
 const detections = {
@@ -80,14 +102,15 @@ const detections = {
 function markerColor(event) {
   if (event.yours) return YOURS_COLOR;
   if (event.kind === "whistles") return WHISTLE_COLOR;
-  if (event.source === "scoreboard") return DATA.colors.scoreboard;
+  if (event.scoring) return DATA.colors.scoreboard;
   return DATA.colors[event.main_cue];
 }
 
 function renderLegend() {
-  const cues = Object.entries(DATA.colors).filter(([cue]) => cue !== "scoreboard" || DATA.scoreboard);
+  const name = cue => (cue === "scoreboard" ? "scoring play" : cue);
   $("legend").innerHTML =
-    cues.map(([cue, color]) => `<span><i class="dot" style="background:${color}"></i>${cue}</span>`).join("") +
+    Object.entries(DATA.colors)
+      .map(([cue, color]) => `<span><i class="dot" style="background:${color}"></i>${name(cue)}</span>`).join("") +
     `<span><i class="dot yours"></i>yours</span><span>bottom lane: every whistle</span>`;
 }
 
@@ -97,8 +120,11 @@ function renderLegend() {
 //   added    your own: {id, t, name, labels}
 //   labels   labels you gave detections: {t, labels}   (an empty list means "I removed the automatic ones")
 //   names    names you gave detections:  {t, name}     (an empty name means "back to the default")
-// plus labelset: your labels, in order (the order decides the 1-9 keys). It's saved in this browser as you go;
-// Export review downloads it as review.json, which find_moments.py reads on the next run.
+//   scoring  scoring plays you set on detected moments: {t, side, play, points}   (an empty side means "no
+//            score", overriding the scoreboard); your own moments keep theirs as `scoring` on the added entry
+// plus labelset: your labels, in order (the order decides the 1-9 keys), and teams / start: the team names and
+// the score when the video starts, if you set them. It's saved in this browser as you go; Export review
+// downloads it as review.json, which find_moments.py reads on the next run.
 
 const STORAGE_KEY = `match-review:${DATA.video_name}:${Math.round(DATA.duration)}`;
 
@@ -116,11 +142,15 @@ function cleanReview(raw) {
         note: String(added.note || ""),
         name: String(added.name || added.note || "").trim(),  // older reviews kept the typed text as a note
         labels: cleanLabels(added.labels),
+        scoring: cleanScoring(added.scoring),
       })),
       labels: list("labels").filter(hasTime).map(entry => ({t: +entry.t, labels: cleanLabels(entry.labels)})),
       names: list("names").filter(hasTime).map(entry => ({t: +entry.t, name: String(entry.name || "").trim()})),
+      scoring: list("scoring").filter(hasTime).map(entry => ({t: +entry.t, ...(cleanScoring(entry) || NO_SCORE)})),
     };
   }
+  clean.teams = cleanPair(raw && raw.teams, name => String(name || "").trim());
+  clean.start = cleanPair(raw && raw.start, score => Math.max(0, Math.round(+score) || 0));
   // Your label list keeps its order. Any label in use but missing from it (yours, or the scoreboard's
   // automatic ones) is added at the end.
   const usedByYou = KINDS.flatMap(kind => [...clean[kind].added, ...clean[kind].labels].flatMap(x => x.labels));
@@ -156,6 +186,7 @@ let review = cleanReview(loadSavedReview() || DATA.review);
 // Rebuilt from the detections and your review after every change.
 
 let events = {moments: [], whistles: []};
+let scoreTimeline = [];  // {t, home, away} after each scoring play, in time order
 
 function buildEvents(kind) {
   const section = review[kind];
@@ -165,21 +196,69 @@ function buildEvents(kind) {
     event.falsePositive = section.false.some(t => sameTime(t, event.at));
     const labelled = section.labels.find(entry => sameTime(entry.t, event.at));
     const named = section.names.find(entry => sameTime(entry.t, event.at));
+    const scored = section.scoring.find(entry => sameTime(entry.t, event.at));
     event.labels = labelled ? [...labelled.labels] : event.auto ? [...event.auto.labels] : [];
-    event.name = named ? named.name : event.auto ? event.auto.name : "";
+    event.ownName = named ? named.name : "";
+    event.scoring = scored ? cleanScoring(scored) : cleanScoring(event.auto_scoring);
   }
   const yours = section.added.map(added => ({
     kind,
     yours: true,
     id: added.id,
     at: added.t,
-    name: added.name,
+    ownName: added.name,
     note: added.note,
     labels: [...added.labels],
+    scoring: kind === "moments" ? added.scoring : null,
     jump_s: Math.max(0, added.t - leadIn),
     until: added.t + highlightFor,
   }));
-  return [...detections[kind], ...yours].sort((a, b) => a.at - b.at);
+  const list = [...detections[kind], ...yours].sort((a, b) => a.at - b.at);
+  if (kind === "moments") addRunningScore(list);
+  // a name you gave wins; else a scoring play is named after itself, e.g. "NSRFC try (12–14)"
+  for (const event of list) event.name = event.ownName || scoringName(event);
+  return list;
+}
+
+const defaultTeams = () => (DATA.scoreboard ? DATA.scoreboard.teams : ["Home", "Away"]);
+const defaultStart = () => (DATA.scoreboard ? DATA.scoreboard.start : [0, 0]);
+
+function teamNames() {
+  return defaultTeams().map((name, i) => (review.teams && review.teams[i]) || name);
+}
+
+function startScore() {
+  return review.start || defaultStart();
+}
+
+// Add up the scoring plays in time order (false positives don't count), noting the score after each
+function addRunningScore(moments) {
+  let [home, away] = startScore();
+  scoreTimeline = [];
+  for (const event of moments) {
+    event.scoreAfter = null;
+    if (!event.scoring || event.falsePositive) continue;
+    if (event.scoring.side === "home") home += event.scoring.points;
+    else away += event.scoring.points;
+    event.scoreAfter = [home, away];
+    scoreTimeline.push({t: event.at, home, away});
+  }
+}
+
+function teamOf(scoring) {
+  return teamNames()[SIDES.indexOf(scoring.side)];
+}
+
+// "NSRFC try", or "SSA +4" for an odd scoreboard change
+function describeScoring(scoring) {
+  const what = scoring.play === "Score" ? `+${scoring.points}` : scoring.play.toLowerCase();
+  return `${teamOf(scoring)} ${what}`;
+}
+
+function scoringName(event) {
+  if (!event.scoring) return "";
+  const after = event.scoreAfter ? ` (${event.scoreAfter[0]}–${event.scoreAfter[1]})` : "";
+  return describeScoring(event.scoring) + after;
 }
 
 // Anything that has to outlive a rebuild (the picker's target, the last thing you picked) holds a key, and
@@ -265,14 +344,31 @@ function titleOf(event) {
 function setName(event, name) {
   const section = review[event.kind];
   name = name.trim();
-  if (name === defaultTitle(event)) name = "";  // saving the default text is the same as clearing it
+  // saving the default text is the same as clearing it (so a scoring play's name keeps following the score)
+  if (name === defaultTitle(event) || name === scoringName(event)) name = "";
   if (event.yours) {
     const added = section.added.find(a => a.id === event.id);
     if (added) added.name = name;
   } else {
     section.names = section.names.filter(entry => !sameTime(entry.t, event.at));
-    // an empty entry is only needed to override an automatic (scoreboard) name
-    if (name || (event.auto && event.auto.name)) section.names.push({t: event.at, name});
+    if (name) section.names.push({t: event.at, name});
+  }
+  refreshAll();
+}
+
+// `scoring` is {side, play, points}, or null for no score
+function setScoring(event, scoring) {
+  if (event.kind !== "moments") return;
+  const section = review.moments;
+  if (event.yours) {
+    const added = section.added.find(a => a.id === event.id);
+    if (added) added.scoring = scoring;
+  } else {
+    section.scoring = section.scoring.filter(entry => !sameTime(entry.t, event.at));
+    // only differences from the scoreboard's reading need an entry
+    if (!sameScoring(scoring, cleanScoring(event.auto_scoring))) {
+      section.scoring.push({t: event.at, ...(scoring || NO_SCORE)});
+    }
   }
   refreshAll();
 }
@@ -280,6 +376,7 @@ function setName(event, name) {
 function refreshAll() {
   events = {moments: buildEvents("moments"), whistles: buildEvents("whistles")};
   renderCounts();
+  renderScoreBar();
   saveReview();
   renderFilters();
   renderList();
@@ -297,8 +394,40 @@ function renderCounts() {
   const labelled = count("moments", e => e.labels.length) + count("whistles", e => e.labels.length);
   $("review-summary").textContent =
     `Your review: ${falseMoments} moment and ${falseWhistles} whistle false positives, ` +
-    `${yourMoments} moments and ${yourWhistles} whistles added, ${labelled} labelled`;
+    `${yourMoments} moments and ${yourWhistles} whistles added, ${labelled} labelled, ` +
+    `${scoreTimeline.length} scoring plays`;
 }
+
+// ---------------------------------------------------------------- the score bar: team names and the score now
+// The team names are yours to set (else the scoreboard's, else Home and Away), as is the score when the video
+// starts (for footage that starts mid-match).
+
+function renderScoreBar() {
+  const teams = teamNames(), start = startScore();
+  SIDES.forEach((side, index) => {
+    $(`team-${side}`).value = teams[index];
+    $(`team-${side}`).placeholder = defaultTeams()[index];
+    $(`start-${side}`).value = start[index];
+  });
+  renderAddScoring();
+}
+
+// Only what differs from the defaults is kept, so a scoreboard re-read on the next run still shows through
+function saveTeamsAndStart() {
+  const teams = SIDES.map(side => $(`team-${side}`).value.trim());
+  review.teams = teams.some((name, i) => name && name !== defaultTeams()[i]) ? teams : null;
+  const start = SIDES.map(side => Math.max(0, Math.round(+$(`start-${side}`).value) || 0));
+  review.start = start.some((score, i) => score !== defaultStart()[i]) ? start : null;
+  refreshAll();
+}
+
+for (const id of ["team-home", "team-away", "start-home", "start-away"]) {
+  $(id).addEventListener("change", saveTeamsAndStart);
+  $(id).addEventListener("keydown", press => {
+    if (press.key === "Enter") { press.preventDefault(); press.target.blur(); }
+  });
+}
+$("start-toggle").onclick = () => $("score-start").classList.toggle("hidden");
 
 // ---------------------------------------------------------------- the list
 
@@ -358,12 +487,19 @@ function renderEventItem(event) {
 // The line under the title: what the detector saw. Once you rename a detection, its own name (#rank, Whistle n)
 // moves here so it isn't lost.
 function eventDetail(event) {
-  if (event.yours) return "yours";
   const parts = [];
-  if (event.name) parts.push(defaultTitle(event));
-  if (event.kind === "whistles") parts.push(`${event.length_s.toFixed(1)}s`, `${event.peak_db} dB`);
-  else if (event.source === "scoreboard") parts.push(event.scoreline);
-  else parts.push(event.main_cue, `score ${event.score}`);
+  if (event.yours) parts.push("yours");
+  else if (event.name) parts.push(defaultTitle(event));
+  if (event.scoring && event.scoreAfter) {
+    const teams = teamNames();
+    parts.push(`${teams[0]} ${event.scoreAfter[0]}–${event.scoreAfter[1]} ${teams[1]}`);
+  } else if (event.yours) {
+    // nothing the detector saw
+  } else if (event.kind === "whistles") {
+    parts.push(`${event.length_s.toFixed(1)}s`, `${event.peak_db} dB`);
+  } else {
+    parts.push(event.main_cue, `score ${event.score}`);
+  }
   if (event.falsePositive) parts.push("false positive");
   return parts.join(" · ");
 }
@@ -381,6 +517,15 @@ function renderLabelChips(event) {
   addLabel.title = "Label this (or press 1-9)";
   addLabel.onclick = click => { click.stopPropagation(); openLabelPicker(keyOf(event), addLabel); };
   row.append(addLabel);
+  if (event.kind === "moments") {
+    // who scored here: a chip when someone did, else a way to say so
+    const score = event.scoring
+      ? make("button", "score-chip", `${describeScoring(event.scoring)} +${event.scoring.points}`)
+      : make("button", "add-label score-button", "+ score");
+    score.title = "Set who scored here and what (S)";
+    score.onclick = click => { click.stopPropagation(); openLabelPicker(keyOf(event), addLabel); };
+    row.append(score);
+  }
   return row;
 }
 
@@ -443,9 +588,11 @@ function applyFilter() {
 // ---------------------------------------------------------------- label picker: a small popup by "+ label"
 
 let pickerTarget = null;  // key of the event being labelled
+let pickerSide = null;    // the team picked in its scoring section before a play is
 
 function openLabelPicker(key, anchor) {
   pickerTarget = key;
+  pickerSide = null;
   lastPicked = key;
   renderLabelPicker();
   $("label-picker").classList.add("open");
@@ -484,6 +631,7 @@ function renderLabelPicker() {
   const what = event.name ? `"${event.name}"`
     : event.kind === "moments" ? (event.yours ? "Your moment" : `Moment #${event.rank}`) : defaultTitle(event);
   $("picker-title").textContent = `${what} at ${formatTime(event.at)}`;
+  renderPickerScoring(event);
 
   const box = $("picker-labels");
   box.innerHTML = "";
@@ -507,6 +655,41 @@ function renderLabelPicker() {
   });
 }
 
+// For moments: who scored (a team, then a play), or "No score". Picking the other team for a play that's
+// already set moves it to them.
+function renderPickerScoring(event) {
+  const box = $("picker-scoring");
+  box.innerHTML = "";
+  if (event.kind !== "moments") return;
+  const scoring = event.scoring;
+  const side = pickerSide || (scoring && scoring.side);
+  box.append(make("div", "picker-heading", "Scored here"));
+  teamNames().forEach((team, index) => {
+    const button = make("button", "picker-team" + (side === SIDES[index] ? " selected" : ""), team);
+    button.onclick = () => {
+      pickerSide = SIDES[index];
+      if (scoring) setScoring(event, {...scoring, side: pickerSide});
+      else renderLabelPicker();
+    };
+    box.append(button);
+  });
+  box.append(make("div", "picker-break"));
+  for (const [play, points] of Object.entries(PLAYS)) {
+    const chosen = scoring && scoring.play === play;
+    const button = make("button", "picker-play" + (chosen ? " selected" : ""), `${play} +${points}`);
+    button.onclick = () => {
+      if (!side) return showToast("Pick the team that scored first");
+      setScoring(event, chosen ? null : {side, play, points});
+    };
+    box.append(button);
+  }
+  if (scoring) {
+    const none = make("button", "picker-play", "No score");
+    none.onclick = () => { pickerSide = null; setScoring(event, null); };
+    box.append(none);
+  }
+}
+
 $("new-label").addEventListener("keydown", press => {
   if (press.key === "Enter") {
     press.preventDefault();
@@ -522,7 +705,7 @@ $("new-label").addEventListener("keydown", press => {
 });
 $("picker-done").onclick = closeLabelPicker;
 document.addEventListener("mousedown", click => {
-  const inside = $("label-picker").contains(click.target) || click.target.classList.contains("add-label");
+  const inside = $("label-picker").contains(click.target) || click.target.closest(".add-label, .score-chip");
   if (pickerTarget && !inside) closeLabelPicker();
 });
 
@@ -535,6 +718,16 @@ function labelWithKey(number) {
   if (!event) return showToast("Play or pick a moment or whistle first");
   const nowOn = toggleLabel(event, label);
   showToast(`${nowOn ? "Labelled" : "Removed"} "${label}"`);
+}
+
+// S opens the picker's scoring section for the moment playing now, else the one you last picked
+function openScoringWithKey() {
+  const event = findEvent(activeEvent ? keyOf(activeEvent) : lastPicked);
+  if (!event || event.kind !== "moments") return showToast("Play or pick a moment first");
+  if (!event.item || !event.item.isConnected) switchTab("moments");
+  const shown = findEvent(keyOf(event));
+  if (!shown.item || !shown.item.isConnected) return showToast("That moment is hidden by the filter");
+  openLabelPicker(keyOf(shown));
 }
 
 // ---------------------------------------------------------------- renaming, in place
@@ -571,9 +764,17 @@ function startRename(key) {
 
 // ---------------------------------------------------------------- timeline
 // The overall score as a grey curve, the moment threshold as a dashed line, a marker per moment, notches where
-// the score changed, and a lane along the bottom with every whistle.
+// the score changed, and a lane along the bottom with every whistle. It normally shows the whole video; while you
+// hold it down it zooms into a couple of minutes (see "scanning" below).
 
 const WHISTLE_LANE = 12;  // px
+const ZOOM_SPAN = 120;    // seconds the timeline shows while zoomed in
+
+let zoom = null;  // {start, span} while zoomed in, else null for the whole video
+
+function timelineRange() {
+  return zoom || {start: 0, span: videoLength()};
+}
 
 function drawTimeline() {
   const ratio = window.devicePixelRatio || 1;
@@ -581,20 +782,40 @@ function drawTimeline() {
   if (!width || !height) return;
   timelineCanvas.width = width;
   timelineCanvas.height = height;
+  const {start, span} = timelineRange();
   const area = {
     ctx: timelineCanvas.getContext("2d"),
     width,
     ratio,
     graphHeight: height - WHISTLE_LANE * ratio,
     laneHeight: WHISTLE_LANE * ratio,
-    x: seconds => (seconds / videoLength()) * width,
+    x: seconds => ((seconds - start) / span) * width,  // a time's position
+    w: seconds => (seconds / span) * width,            // a duration's width
   };
   const top = Math.max(...DATA.score, DATA.min_score * 1.5);
   area.y = value => area.graphHeight - (value / top) * (area.graphHeight - 6 * ratio);
   drawScoreCurve(area);
+  if (zoom) drawZoomTicks(area);
   drawMomentMarkers(area);
   drawScoreChanges(area);
   drawWhistleLane(area);
+}
+
+// While zoomed: a tick every 10 s, a longer one each minute, and the times at either end
+function drawZoomTicks({ctx, width, ratio, graphHeight, x}) {
+  const {start, span} = zoom;
+  ctx.fillStyle = "#666";
+  for (let t = Math.ceil(start / 10) * 10; t <= start + span; t += 10) {
+    const tall = t % 60 === 0 ? 10 : 5;
+    ctx.fillRect(x(t) - ratio / 2, graphHeight - tall * ratio, ratio, tall * ratio);
+  }
+  ctx.fillStyle = "#bbb";
+  ctx.font = `${11 * ratio}px system-ui, sans-serif`;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  ctx.fillText(formatTime(start), 4 * ratio, 12 * ratio);
+  ctx.textAlign = "right";
+  ctx.fillText(formatTime(start + span), width - 4 * ratio, 12 * ratio);
 }
 
 function drawScoreCurve({ctx, width, ratio, graphHeight, x, y}) {
@@ -629,9 +850,8 @@ function drawMomentMarkers({ctx, ratio, graphHeight, x}) {
 }
 
 function drawScoreChanges({ctx, ratio, x}) {
-  if (!DATA.scoreboard) return;
   ctx.fillStyle = DATA.colors.scoreboard;
-  for (const change of DATA.scoreboard.changes) {
+  for (const change of scoreTimeline) {
     const left = x(change.t);  // a small downward notch along the top edge
     ctx.beginPath();
     ctx.moveTo(left - 4 * ratio, 0);
@@ -641,22 +861,22 @@ function drawScoreChanges({ctx, ratio, x}) {
   }
 }
 
-function drawWhistleLane({ctx, width, ratio, graphHeight, laneHeight, x}) {
+function drawWhistleLane({ctx, width, ratio, graphHeight, laneHeight, x, w}) {
   ctx.fillStyle = "#151515";
   ctx.fillRect(0, graphHeight, width, laneHeight);
   for (const whistle of events.whistles) {
     const dimmed = whistle.falsePositive || !matchesFilter(whistle);
     ctx.fillStyle = dimmed ? DIMMED_COLOR : markerColor(whistle);
-    const length = whistle.yours ? 2 * ratio : Math.max(ratio, x(whistle.length_s));
+    const length = whistle.yours ? 2 * ratio : Math.max(ratio, w(whistle.length_s));
     ctx.fillRect(x(whistle.at) - ratio / 2, graphHeight + 2 * ratio, length, laneHeight - 4 * ratio);
   }
 }
 
-// Clicking near a marker jumps to that event's lead-in (in the bottom lane: whistles); elsewhere seeks there
 function timeAtPointer(pointer) {
   const box = timeline.getBoundingClientRect();
   const fraction = Math.min(1, Math.max(0, (pointer.clientX - box.left) / box.width));
-  return fraction * videoLength();
+  const {start, span} = timelineRange();
+  return start + fraction * span;
 }
 
 function nearestEvent(list, seconds) {
@@ -667,7 +887,8 @@ function nearestEvent(list, seconds) {
   return best;
 }
 
-timeline.onclick = click => {
+// A click near a marker jumps to that event's lead-in (in the bottom lane: whistles); elsewhere it seeks there
+function clickTimeline(click) {
   const seconds = timeAtPointer(click);
   const tolerance = videoLength() * 6 / timeline.clientWidth;  // 6 px either side
   const inWhistleLane = click.clientY > timeline.getBoundingClientRect().bottom - WHISTLE_LANE - 4;
@@ -679,25 +900,123 @@ timeline.onclick = click => {
   } else {
     video.currentTime = seconds;
   }
-};
-timeline.onmousemove = pointer => {
+}
+
+function showHoverTime(pointer) {
+  const box = timeline.getBoundingClientRect();
   hoverTime.style.display = "block";
-  hoverTime.style.left = `${pointer.clientX - timeline.getBoundingClientRect().left}px`;
+  hoverTime.style.left = `${Math.min(box.width, Math.max(0, pointer.clientX - box.left))}px`;
   hoverTime.textContent = formatTime(timeAtPointer(pointer));
-};
-timeline.onmouseleave = () => { hoverTime.style.display = "none"; };
+}
+
+// ---------------------------------------------------------------- scanning: press and drag along the timeline
+// A quick click works as above. Dragging scrubs through the video. Holding still for a moment first zooms the
+// timeline into ZOOM_SPAN seconds around that point, so the same drag moves a few frames at a time; pushing past
+// either end slides the zoomed window along, faster the further you go. Letting go stays where you are.
+
+const HOLD_MS = 300;  // how long to hold still before zooming in
+const DRAG_PX = 4;    // moving this far counts as a drag rather than a click
+
+let scan = null;  // {pointerId, x, y, dragged, wasPlaying, holdTimer, lastPointer, panFrame, panAt} while pressed
+
+function startZoom(seconds) {
+  const length = videoLength();
+  const span = Math.min(ZOOM_SPAN, length);
+  zoom = {start: Math.min(length - span, Math.max(0, seconds - span / 2)), span};
+  timeline.classList.add("zoomed");
+  drawTimeline();
+  updatePlayback();
+}
+
+function endZoom() {
+  zoom = null;
+  timeline.classList.remove("zoomed");
+  drawTimeline();
+  updatePlayback();
+}
+
+function scrubTo(pointer) {
+  scan.lastPointer = pointer;
+  video.currentTime = timeAtPointer(pointer);
+  showHoverTime(pointer);
+}
+
+// While zoomed with the pointer past an end, slide the window that way: a window's width per second for every
+// quarter of the timeline's width you've gone past the end
+function panZoom(now) {
+  if (!scan || !zoom) return;
+  const elapsed = scan.panAt ? (now - scan.panAt) / 1000 : 0;
+  scan.panAt = now;
+  const box = timeline.getBoundingClientRect();
+  const x = scan.lastPointer.clientX;
+  const past = x < box.left ? x - box.left : x > box.right ? x - box.right : 0;
+  if (past) {
+    const length = videoLength();
+    zoom.start = Math.min(length - zoom.span, Math.max(0, zoom.start + (past / box.width) * zoom.span * elapsed * 4));
+    scrubTo(scan.lastPointer);
+    drawTimeline();
+  }
+  scan.panFrame = requestAnimationFrame(panZoom);
+}
+
+timeline.addEventListener("pointerdown", press => {
+  if (press.button !== 0 || scan) return;
+  timeline.setPointerCapture(press.pointerId);
+  scan = {pointerId: press.pointerId, x: press.clientX, y: press.clientY, dragged: false,
+          wasPlaying: !video.paused, lastPointer: press, panAt: 0, panFrame: 0};
+  scan.holdTimer = setTimeout(() => {
+    if (!scan || scan.dragged) return;
+    video.pause();
+    startZoom(timeAtPointer(scan.lastPointer));
+    scrubTo(scan.lastPointer);
+    scan.panFrame = requestAnimationFrame(panZoom);
+  }, HOLD_MS);
+});
+
+timeline.addEventListener("pointermove", pointer => {
+  if (!scan || pointer.pointerId !== scan.pointerId) return showHoverTime(pointer);
+  scan.lastPointer = pointer;
+  const moved = Math.hypot(pointer.clientX - scan.x, pointer.clientY - scan.y) > DRAG_PX;
+  if (!scan.dragged && !zoom && moved) {
+    scan.dragged = true;  // a drag at full scale
+    video.pause();
+  }
+  if (scan.dragged || zoom) scrubTo(pointer);
+});
+
+function finishScan(release, cancelled) {
+  if (!scan || release.pointerId !== scan.pointerId) return;
+  const finished = scan;
+  scan = null;
+  clearTimeout(finished.holdTimer);
+  cancelAnimationFrame(finished.panFrame);
+  const wasClick = !finished.dragged && !zoom;
+  if (zoom) endZoom();
+  if (wasClick && !cancelled) clickTimeline(release);
+  else if (finished.wasPlaying) video.play();
+  if (!timeline.matches(":hover")) hoverTime.style.display = "none";
+}
+
+timeline.addEventListener("pointerup", release => finishScan(release, false));
+timeline.addEventListener("pointercancel", release => finishScan(release, true));
+timeline.addEventListener("pointerleave", () => { if (!scan) hoverTime.style.display = "none"; });
 
 // ---------------------------------------------------------------- playback: what's playing now
 
-// "NSRFC 7–14 SSA" at this point of the match, or "" without a scoreboard
-function scoreAtTime(seconds) {
-  const scoreboard = DATA.scoreboard;
-  if (!scoreboard) return "";
-  let [home, away] = scoreboard.start;
-  for (const change of scoreboard.changes) {
-    if (change.t <= seconds) { home = change.home; away = change.away; }
+// [home, away] at this point of the match, from the scoring plays (the scoreboard's and yours)
+function scoreAt(seconds) {
+  let score = startScore();
+  for (const change of scoreTimeline) {
+    if (change.t <= seconds) score = [change.home, change.away];
   }
-  return `${scoreboard.teams[0]} ${home}–${away} ${scoreboard.teams[1]}`;
+  return score;
+}
+
+// "NSRFC 7–14 SSA" at this point of the match, or "" while there's nothing to keep score of
+function scoreAtTime(seconds) {
+  if (!DATA.scoreboard && !scoreTimeline.length && !review.teams && !review.start) return "";
+  const [home, away] = scoreAt(seconds), teams = teamNames();
+  return `${teams[0]} ${home}–${away} ${teams[1]}`;
 }
 
 function describeForNowPlaying(event) {
@@ -709,7 +1028,9 @@ function describeForNowPlaying(event) {
 
 function updatePlayback() {
   const now = video.currentTime, length = videoLength();
-  playhead.style.left = `${(now / length) * 100}%`;
+  const {start, span} = timelineRange();
+  playhead.style.left = `${((now - start) / span) * 100}%`;
+  playhead.style.display = now < start || now > start + span ? "none" : "";
 
   let playing = null;  // the last shown event whose window covers now
   for (const event of shownEvents()) {
@@ -725,6 +1046,8 @@ function updatePlayback() {
   }
   const parts = [`${formatTime(now)} / ${formatTime(length)}`, describeForNowPlaying(playing), scoreAtTime(now)];
   $("now-playing").textContent = parts.filter(Boolean).join(" · ");
+  const [home, away] = scoreAt(now);
+  $("score-now").textContent = `${home}–${away}`;
   if (caption) renderCaption(playing, now, length);
 }
 
@@ -768,6 +1091,9 @@ function openAddForm() {
   $("add-time").textContent = formatTime(addingAt);
   $("add-kind").textContent = SINGULAR[tab];
   $("add-name").value = "";
+  $("add-team").value = "";
+  $("add-play").value = "Try";
+  $("add-scoring").classList.toggle("hidden", tab !== "moments");
   $("add-form").classList.add("open");
   $("add-name").focus();
 }
@@ -776,11 +1102,27 @@ function closeAddForm() {
   $("add-form").classList.remove("open");
 }
 
-// Added to the tab you're on: your moment, or your whistle
+// The team picker lists the current team names; the play picker every play and its points
+function renderAddScoring() {
+  const team = $("add-team"), play = $("add-play");
+  const picked = team.value;
+  team.innerHTML = "";
+  team.append(new Option("No score", ""));
+  teamNames().forEach((name, index) => team.append(new Option(`${name} scored`, SIDES[index])));
+  team.value = picked;
+  if (!play.options.length) {
+    for (const [name, points] of Object.entries(PLAYS)) play.append(new Option(`${name} +${points}`, name));
+  }
+}
+
+// Added to the tab you're on: your moment (with who scored, if anyone did), or your whistle
 function saveAddForm() {
   const id = randomId();
   const name = $("add-name").value.trim();
-  review[tab].added.push({id, t: Math.round(addingAt * 10) / 10, note: "", name, labels: []});
+  const side = tab === "moments" ? $("add-team").value : "";
+  const play = $("add-play").value;
+  const scoring = side ? {side, play, points: PLAYS[play]} : null;
+  review[tab].added.push({id, t: Math.round(addingAt * 10) / 10, note: "", name, labels: [], scoring});
   lastPicked = {kind: tab, id, at: null};
   closeAddForm();
   refreshAll();
@@ -798,7 +1140,7 @@ $("add-form").addEventListener("keydown", press => {
 
 function exportReview() {
   const exported = {video: DATA.video_name, duration: DATA.duration, exported: new Date().toISOString(),
-                    labelset: review.labelset};
+                    labelset: review.labelset, teams: review.teams, start: review.start};
   for (const kind of KINDS) {
     const section = review[kind];
     exported[kind] = {
@@ -807,7 +1149,8 @@ function exportReview() {
       false: section.false,
       labels: section.labels,
       names: section.names,
-      added: section.added.map(({t, note, name, labels}) => ({t, note, name, labels})),
+      scoring: section.scoring,
+      added: section.added.map(({t, note, name, labels, scoring}) => ({t, note, name, labels, scoring})),
     };
   }
   const link = document.createElement("a");
@@ -1006,6 +1349,7 @@ const KEY_ACTIONS = {
   w: () => switchTab("whistles"),
   a: openAddForm,
   r: () => startRename(activeEvent ? keyOf(activeEvent) : lastPicked),
+  s: openScoringWithKey,
   x: () => {
     if (activeEvent) activeEvent.yours ? removeYours(activeEvent) : toggleFalsePositive(activeEvent);
   },

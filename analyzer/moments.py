@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from .review import review_labels, review_name
+from .review import clean_scoring, review_false, review_labels, review_name, review_scoring
 from .scoring import main_cue
 from .timecodes import format_time
 
@@ -23,9 +23,12 @@ def make_moment(second, score, spikes, weights, lead_in, cue=None):
         **{f"{name}_spike": f"{spikes[name][second]:.2f}" for name in spikes},
         # filled in when the scoreboard is read:
         "source": "",        # "scoreboard" for a scoring play
-        "scoreline": "",     # e.g. "NSRFC 12–14 SSA"
-        "auto_name": "",     # e.g. "NSRFC try (12–14)"
         "auto_labels": "",   # e.g. "Try"
+        "_auto_scoring": None,  # the overlay's {"side", "play", "points"} (not written to moments.csv)
+        # filled in by apply_scoring, from the scoreboard and the scoring you set in the page:
+        "scoring": "",       # e.g. "NSRFC try +5"
+        "scoreline": "",     # the score after it, e.g. "NSRFC 12–14 SSA"
+        "auto_name": "",     # e.g. "NSRFC try (12–14)"
     }
 
 
@@ -33,7 +36,6 @@ def attach_scoreboard(moments, scoreboard, score, spikes, weights, lead_in):
     """Attach each score change to the moment that caused it: the biggest moment in the 40 s before the overlay
     changed, favouring ones closer to the change. If no picked moment is in that window, the biggest free second
     there becomes a new moment."""
-    home, away = scoreboard["teams"]
     for event in scoreboard["events"]:
         window_end = int(min(len(score) - 1, event["t_change"] + 2))
         window_start = max(0, window_end - SCORE_LOOKBACK)
@@ -49,10 +51,50 @@ def attach_scoreboard(moments, scoreboard, score, spikes, weights, lead_in):
             moment = make_moment(second, score, spikes, weights, lead_in, cue="scoreboard")
             moments.append(moment)
         moment["source"] = "scoreboard"
-        moment["scoreline"] = f'{home} {event["after"][0]}–{event["after"][1]} {away}'
-        moment["auto_name"] = event["name"]
+        moment["_auto_scoring"] = {"side": event["side"], "play": event["play"], "points": event["points"]}
         moment["auto_labels"] = event["label"] or ""
     return moments
+
+
+def apply_scoring(moments, review, scoreboard):
+    """Who scored at each moment and the score after it, from the scoreboard's readings and the scoring plays you
+    set in the page (yours win; your own added moments count too, false positives don't). Fills each moment's
+    `scoring`, `scoreline` and automatic name, e.g. "NSRFC try (12–14)"."""
+    teams, (home, away) = match_teams(review, scoreboard)
+    plays = [(m["peak_s"], m, review_scoring(review, m["peak_s"], m["_auto_scoring"])) for m in moments
+             if not review_false(review, "moments", m["peak_s"])]
+    added = ((review or {}).get("moments") or {}).get("added", [])
+    plays += [(float(a["t"]), None, clean_scoring(a.get("scoring"))) for a in added if "t" in a]
+    for moment in moments:
+        moment["scoring"] = moment["scoreline"] = moment["auto_name"] = ""
+    for _, moment, scoring in sorted(plays, key=lambda play: play[0]):
+        if not scoring:
+            continue
+        side = 0 if scoring["side"] == "home" else 1
+        if side == 0:
+            home += scoring["points"]
+        else:
+            away += scoring["points"]
+        if moment is None:
+            continue
+        points = f'+{scoring["points"]}'
+        what = points if scoring["play"] == "Score" else scoring["play"].lower()
+        moment["scoring"] = f"{teams[side]} {what}" + ("" if what == points else f" {points}")
+        moment["scoreline"] = f"{teams[0]} {home}–{away} {teams[1]}"
+        moment["auto_name"] = f"{teams[side]} {what} ({home}–{away})"
+    return moments
+
+
+def match_teams(review, scoreboard):
+    """The team names and the score when the video starts: yours from the page, else the scoreboard's."""
+    teams = list(scoreboard["teams"]) if scoreboard else ["Home", "Away"]
+    start = tuple(scoreboard["start"]) if scoreboard else (0, 0)
+    yours = (review or {}).get("teams") or []
+    if len(yours) == 2:
+        teams = [str(name).strip() or default for name, default in zip(yours, teams, strict=True)]
+    if len((review or {}).get("start") or []) == 2:
+        start = tuple(int(score) for score in review["start"])
+    return teams, start
 
 
 def biggest_free_second(moments, score, start, end, recency):

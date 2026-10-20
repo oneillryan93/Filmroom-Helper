@@ -50,7 +50,7 @@ def page_data(out_dir, video, moments, whistles, score, duration, settings, revi
         "moments": [{"rank": m["rank"], "peak_s": m["peak_s"], "jump_s": float(m["jump_s"]),
                      "peak_time": m["peak_time"], "score": m["score"], "main_cue": m["main_cue"],
                      "source": m.get("source", ""), "scoreline": m.get("scoreline", ""),
-                     "auto": automatic_values(m)} for m in moments],
+                     "auto": automatic_values(m), "auto_scoring": m.get("_auto_scoring")} for m in moments],
         "whistles": [{"n": w["n"], "time": w["time"], "start_s": float(w["start_s"]),
                       "jump_s": float(w["jump_s"]), "length_s": float(w["length_s"]), "peak_db": w["peak_db"]}
                      for w in whistles],

@@ -168,11 +168,12 @@ def main():
 
     review_path = args.review or os.path.join(out, "review.json")
     review = load_review(review_path, required=bool(args.review))
+    moment_rows.apply_scoring(moments, review, scoreboard)
     moment_rows.apply_review(moments, review)
     whistle_rows = moment_rows.make_whistle_rows(whistles, args.whistle_before, review)
 
     if moments:
-        write_rows_csv(os.path.join(out, "moments.csv"), moments, list(moments[0]))
+        write_rows_csv(os.path.join(out, "moments.csv"), moments, [f for f in moments[0] if not f.startswith("_")])
     write_rows_csv(os.path.join(out, "whistles.csv"), whistle_rows, WHISTLE_FIELDS)
     settings = {"min_score": args.min_score, "before": args.before, "after": args.after,
                 "whistle_before": args.whistle_before}

@@ -6,6 +6,7 @@
   --dim: #999;
   --accent: #f43f5e;
   --danger: #f87171;
+  --scoring: #f472b6;  /* the scoreboard colour */
 }
 * { box-sizing: border-box; }
 body {
@@ -72,7 +73,10 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; }
   background: var(--panel);
   border-radius: 6px;
   cursor: pointer;
+  touch-action: none;  /* a finger drag scans the video rather than scrolling the page */
+  user-select: none;
 }
+.timeline.zoomed { box-shadow: 0 0 0 1px var(--accent); cursor: ew-resize; }
 .timeline canvas { width: 100%; height: 100%; display: block; }
 .playhead {
   position: absolute;
@@ -109,6 +113,15 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; }
   border-radius: 6px;
 }
 .add-form.open { display: flex; }
+.add-form select {
+  padding: 6px 8px;
+  background: var(--background);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+.add-scoring { display: flex; gap: 8px; }
 .add-form input {
   flex: 1;
   min-width: 140px;
@@ -128,6 +141,40 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; }
   background: var(--panel);
   border-radius: 6px;
 }
+.score-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.team-name {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  background: none;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+}
+#team-away { text-align: right; }
+.team-name:hover, .team-name:focus { border-color: var(--line); background: var(--background); }
+.score-now { color: var(--scoring); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.score-bar .link-button { font-size: 12px; }
+.score-start { flex-basis: 100%; color: var(--dim); font-size: 12px; }
+.score-start input {
+  width: 4em;
+  padding: 2px 4px;
+  background: var(--background);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+}
+
 .tabs { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 .tab {
   padding: 12px;
@@ -225,6 +272,15 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; }
 .label-chip:hover { border-color: var(--danger); }
 .label-chip:hover .remove-mark { color: var(--danger); }
 .add-label { background: none; border: 1px dashed #444; color: var(--dim); }
+.score-chip {
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.5;
+  background: none;
+  border: 1px solid var(--scoring);
+  color: var(--scoring);
+}
 .add-label:hover { border-color: var(--dim); }
 
 .review-panel {
@@ -253,6 +309,13 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; }
 }
 #label-picker.open { display: block; }
 .picker-title { margin-bottom: 8px; color: var(--dim); font-size: 12px; }
+#picker-scoring { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; margin-bottom: 8px;
+                  border-bottom: 1px solid var(--line); }
+#picker-scoring:empty { display: none; }
+.picker-heading { flex-basis: 100%; color: var(--dim); font-size: 12px; }
+.picker-break { flex-basis: 100%; height: 0; }
+.picker-team, .picker-play { padding: 3px 9px; border-radius: 999px; font-size: 12px; }
+.picker-team.selected, .picker-play.selected { background: var(--scoring); border-color: var(--scoring); color: #000; }
 #picker-labels { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
 .picker-label { padding: 3px 9px; border-radius: 999px; font-size: 12px; }
 .picker-label.selected { background: var(--accent); border-color: var(--accent); color: #fff; }

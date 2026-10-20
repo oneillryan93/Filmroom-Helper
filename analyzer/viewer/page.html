@@ -27,14 +27,19 @@
       <button id="add" title="Add your own at the current time (A)">+ Add here</button>
       <button id="pop-out" title="Open the video in its own window, e.g. on another screen (V)">&#10697; Pop out video</button>
       <span class="key-help">N / P: next / prev &middot; M / W: moments / whistles &middot; A: add &middot;
-        V: pop out video &middot; F: fullscreen &middot; 1&ndash;9: label &middot; R: rename &middot;
-        X: false positive &middot; J / L: &minus;/+10s &middot; K or space: play/pause</span>
+        V: pop out video &middot; F: fullscreen &middot; 1&ndash;9: label &middot; S: score &middot; R: rename &middot;
+        X: false positive &middot; J / L: &minus;/+10s &middot; K or space: play/pause &middot;
+        hold the timeline to zoom in and scan</span>
       <span class="now-playing" id="now-playing"></span>
     </div>
 
     <div class="add-form" id="add-form">
       <span>Add your <span id="add-kind">moment</span> at <b id="add-time"></b></span>
       <input id="add-name" placeholder="Name it, e.g. Try in the corner (optional)" maxlength="80" spellcheck="false">
+      <span class="add-scoring" id="add-scoring">
+        <select id="add-team" title="The team that scored, if anyone did"></select>
+        <select id="add-play" title="What they scored"></select>
+      </span>
       <button id="add-save">Save</button>
       <button id="add-cancel">Cancel</button>
     </div>
@@ -48,6 +53,16 @@
   </div>
 
   <aside class="sidebar">
+    <div class="score-bar">
+      <input id="team-home" class="team-name" maxlength="24" spellcheck="false" title="Home team: click to rename">
+      <span class="score-now" id="score-now" title="The score at this point of the video"></span>
+      <input id="team-away" class="team-name" maxlength="24" spellcheck="false" title="Away team: click to rename">
+      <button class="link-button" id="start-toggle" title="The score when the video starts, e.g. for second-half footage">start</button>
+      <div class="score-start hidden" id="score-start">
+        Score when the video starts:
+        <input id="start-home" type="number" min="0" max="999"> &ndash; <input id="start-away" type="number" min="0" max="999">
+      </div>
+    </div>
     <div class="tabs">
       <button class="tab selected" id="tab-moments">Moments (<span id="moments-count"></span>)</button>
       <button class="tab" id="tab-whistles">Whistles (<span id="whistles-count"></span>)</button>
@@ -67,6 +82,7 @@
 
 <div id="label-picker" role="dialog" aria-label="Labels">
   <div class="picker-title" id="picker-title"></div>
+  <div id="picker-scoring"></div>
   <div id="picker-labels"></div>
   <div class="button-row">
     <input id="new-label" placeholder="New label, then Enter" maxlength="40" spellcheck="false">

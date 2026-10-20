@@ -2,6 +2,7 @@
 
 Finds the key moments and every referee whistle in a full match video. Currently is geared heavily only towards rugby. It builds a results page where you can
 watch the whole match, jump between moments, and review them: label, rename, mark false positives, add your own.
+It also keeps the score: from the on-screen scoreboard if there is one, and from the scoring plays you enter.
 
 ## Getting started
 
@@ -219,6 +220,23 @@ It can only re-weigh the four cues. It can't see a try that made no noise, no ca
 gap is somewhat mitigated by the scoreboard reader ([analyzer/scoreboard.py](analyzer/scoreboard.py), `--scoreboard`) fills, by
 placing a moment wherever the score on screen changes. This only occurs of course if the video already has that info on the screen, so it is optional.
 
+
+## Keeping score
+
+The score shown in the viewer (top of the list, the "now playing" line and the pop-out caption) adds up every
+scoring play, in time order, from the score when the video starts. The plays come from two places:
+- **The scoreboard reader** (`--scoreboard`): each score change it reads is attached to a moment as a try,
+  conversion, penalty goal and so on.
+- **You**, in the viewer: name the teams by clicking their names at the top of the list (and set the score at the
+  start of the video with **start**, for footage that begins mid-match). Then give any moment a scoring play with
+  **+ score** (or the **S** key): pick the team, then the play. A play can be a try (5), conversion (2), penalty goal
+  (3), drop goal (3), penalty try (7) or converted try (7). When you add your own moment with **+ Add here**,
+  you can choose who scored there too.
+
+What you set wins over the scoreboard's reading. You can move a play to the other team, change it, or choose
+**No score** to drop a misread. A moment you mark as a false positive doesn't count towards the score. Scoring plays
+are named after themselves (e.g. "NSRFC try (12–14)") unless you rename them, and they're pink on the timeline.
+All of it is saved in review.json, so the next run's moments.csv has the same `scoring` and `scoreline` columns.
 
 ## Built with
 

@@ -227,15 +227,19 @@ def scoring_events(changes):
         if is_conversion_of_previous:
             previous["converted"] = True
             previous["after"] = change["after"]
+            previous["play"] = "Converted try"
+            previous["points"] += change["points"]
             previous["name"] = f'{change["team"]} try + conversion ({home_score}–{away_score})'
             continue
         label = POINTS.get(change["points"]) if change["normal"] else None
         if label == "Try":
-            what = "try" if change["points"] == 5 else "converted try"
+            play = "Try" if change["points"] == 5 else "Converted try"
         else:
-            what = {"Conversion": "conversion", "Penalty": "penalty goal"}.get(label, f'+{change["points"]}')
+            play = {"Conversion": "Conversion", "Penalty": "Penalty goal"}.get(label, "Score")
+        what = play.lower() if play != "Score" else f'+{change["points"]}'
         events.append({"t_change": change["t"], "team": change["team"], "side": change["side"], "label": label,
-                       "after": change["after"], "name": f'{change["team"]} {what} ({home_score}–{away_score})'})
+                       "play": play, "points": change["points"], "after": change["after"],
+                       "name": f'{change["team"]} {what} ({home_score}–{away_score})'})
     return events
 
 
