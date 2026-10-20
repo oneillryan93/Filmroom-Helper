@@ -222,8 +222,15 @@ placing a moment wherever the score on screen changes. This only occurs of cours
 
 ## Built with
 
-- [FFmpeg](https://ffmpeg.org/) for video and audio decoding. It is pulled in as a dependency or used as a separate program if found on your local system and isn't bundled here.
-- [NumPy](https://numpy.org/) for the logistic regression and many data tranformation actions.
+- [FFmpeg](https://ffmpeg.org/) for video and audio decoding. It is pulled in as [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg)  or used as a separate program if found on your local system and isn't bundled here.
+- [NumPy](https://numpy.org/) for the logistic regression and many data transformation actions.
+- [uv](https://docs.astral.sh/uv/) by Astral (MIT / Apache-2.0), which the launchers install to set up Python and the
+  libraries.
+- The optional AI add-on (`--extra ai`, used by the scoreboard reader):
+  - [RapidOCR](https://github.com/RapidAI/RapidOCR) by RapidAI (Apache-2.0) to read the on-screen score.
+  - Its text detection and recognition models come from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) by
+    PaddlePaddle (Apache-2.0).
+  - [ONNX Runtime](https://onnxruntime.ai/) by Microsoft (MIT) to run those models.
 - The camera-pan cue uses phase correlation: C. D. Kuglin and D. C. Hines, "The phase correlation image alignment method", *Proc. IEEE Int. Conf. on Cybernetics and Society*, 163–165 (1975).
 
 ## Privacy
