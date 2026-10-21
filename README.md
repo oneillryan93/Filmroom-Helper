@@ -7,9 +7,11 @@ It also keeps the score: from the on-screen scoreboard if there is one, and from
 ## Getting started
 
 Double-click **Match Analyzer.bat** (Windows) or **Match Analyzer.command** (macOS/Linux). The first start sets
-everything up by itself, with no prompts: it installs [uv](https://docs.astral.sh/uv/) into `.tools/uv`, along with
+everything up by itself. It installs [uv](https://docs.astral.sh/uv/) into `.tools/uv`, along with
 Python and the libraries it needs. ffmpeg comes bundled through `imageio-ffmpeg`. The app then opens in your browser:
 pick a video, choose options and press Analyse.
+
+False positives are unfortunately pretty common, this tool isn't meant to replace your own match analysis, but hopefully help you get a jumping off point, and help organize and categorize plays for review.
 
 ### Updates
 
