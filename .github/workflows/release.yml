@@ -1,0 +1,88 @@
+# Publishes a new version: Actions tab -> Release -> Run workflow, and pick how big a step it is.
+#   1. raises `version` in pyproject.toml (and uv.lock, which records it too): patch 0.0.1 -> 0.0.2,
+#      minor 0.0.2 -> 0.1.0, major 0.1.0 -> 1.0.0
+#   2. commits that to the branch it was run on and tags it v<version>
+#   3. zips the project at that tag (git archive: tracked files only, minus anything marked export-ignore in
+#      .gitattributes) and publishes it as the release "Match Analyzer v<version>", with notes listing the changes
+# Everyone's app then finds the release on its next start and updates itself (updater.py).
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of the version to raise"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write  # to push the version commit and tag, and create the release
+
+concurrency:
+  group: release  # one release at a time, so two runs can't pick the same version
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Raise the version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          python3 - <<'EOF'
+          import os, re
+          from pathlib import Path
+          path = Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          old = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', text, re.MULTILINE)
+          if not old:
+              raise SystemExit("pyproject.toml's version isn't three numbers like 1.2.3")
+          major, minor, patch = map(int, old.groups())
+          bump = os.environ["BUMP"]
+          if bump == "major":
+              major, minor, patch = major + 1, 0, 0
+          elif bump == "minor":
+              minor, patch = minor + 1, 0
+          else:
+              patch += 1
+          version = f"{major}.{minor}.{patch}"
+          path.write_text(text[:old.start()] + f'version = "{version}"' + text[old.end():], encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\n")
+          print(f"{'.'.join(old.groups())} -> {version}")
+          EOF
+          uv lock  # records the new version in uv.lock; the libraries' versions stay as they are
+
+      - name: Commit and tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is already tagged" >&2; exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release v$VERSION"
+          git tag "v$VERSION"
+          git push origin "HEAD:${GITHUB_REF_NAME}" "v$VERSION"
+
+      - name: Zip the project
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: git archive --format=zip --prefix="Match Analyzer/" -o "Match-Analyzer-v$VERSION.zip" "v$VERSION"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" "Match-Analyzer-v$VERSION.zip" \
+            --title "Match Analyzer v$VERSION" --generate-notes --verify-tag

@@ -18,7 +18,8 @@ Each time the app starts it checks this project's
 `version` in `pyproject.toml`, it downloads it, replaces the program's files, and restarts into the new version.
 This takes a few seconds, and the version shows at the top of the app's page. Your results (`output/`), videos
 (`resources/`) and the add-ons the launchers set up are never touched. The files an update replaces are kept in
-`.tools/backup/<old version>/`. If GitHub can't be reached, the app just starts as it is.
+`.tools/backup/<old version>/`. Only the most recent update's backup is kept: older ones are deleted once an
+update succeeds. If GitHub can't be reached, the app just starts as it is.
 
 Nothing needs git: a release is downloaded as a zip. If you downloaded a release, updates just happen. A git
 checkout (a folder with `.git`, i.e. a developer's copy) isn't updated on start, so local changes are safe. It only
@@ -26,8 +27,13 @@ says a newer release exists. There, `git pull` updates it, or `uv run updater.py
 directly. `uv run updater.py` works in any copy and checks and updates right away. To turn the check on start off,
 start the app with `--no-update` or set `MATCH_ANALYZER_NO_UPDATE=1`.
 
-To publish an update: raise `version` in `pyproject.toml`, commit and push, then create a GitHub release tagged
-`v<version>` (e.g. `v0.0.2`). Pre-releases and drafts are ignored.
+To publish an update, push your changes, then on GitHub go to **Actions → Release → Run workflow** and pick
+**patch** (0.0.1 → 0.0.2), **minor** (→ 0.1.0) or **major** (→ 1.0.0). The workflow
+([.github/workflows/release.yml](.github/workflows/release.yml)) raises the version in `pyproject.toml` and
+`uv.lock`, commits and tags it, and publishes the release "Match Analyzer v<version>". The release lists the changes
+since the last one, with `Match-Analyzer-v<version>.zip` attached: the download for new users, and what the
+updater installs. Pull afterwards to get the version commit locally. A release made by hand also works, as long as
+it's tagged `v<version>` and matches `pyproject.toml`. Pre-releases and drafts are ignored.
 
 From a terminal:
 

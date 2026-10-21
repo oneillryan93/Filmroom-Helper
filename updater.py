@@ -7,7 +7,8 @@ again when it exits with RESTART_CODE).
 
 Never touched: your results (output/), videos (resources/), the tools and models the launchers set up (.tools/,
 .models/), the Python environment (.venv/), and anything else that isn't part of a release. The files an update
-replaces or removes are first copied to .tools/backup/<old version>/. Nothing needs git: a release is
+replaces or removes are first copied to .tools/backup/<old version>/; once an update has worked, only its
+backup is kept and those from earlier updates are deleted. Nothing needs git: a release is
 downloaded as a zip over HTTPS.
 
 The check on start leaves a git checkout (a developer's copy) alone and only says a newer release exists. Running
@@ -76,16 +77,16 @@ def api_url(repository):
     return f"https://api.github.com/repos/{match.group(1)}/{match.group(2)}"
 
 
-def fetch(url, timeout=TIMEOUT):
-    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
-                                                  "User-Agent": "match-analyzer-updater"})
+def fetch(url, timeout=TIMEOUT, accept="application/vnd.github+json"):
+    request = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "match-analyzer-updater"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
 
 
 def latest_release(repository):
     """The newest published release (not drafts or pre-releases): {"version", "tag", "zip", "page"}, or None if
-    the repository has none yet."""
+    the repository has none yet. The zip is the one the Release workflow attaches (.github/workflows/release.yml),
+    else GitHub's own zip of the tagged source."""
     try:
         release = json.loads(fetch(api_url(repository) + "/releases/latest"))
     except urllib.error.HTTPError as error:
@@ -93,7 +94,10 @@ def latest_release(repository):
             return None
         raise
     tag = release["tag_name"]
-    return {"version": tag.lstrip("v"), "tag": tag, "zip": release["zipball_url"], "page": release["html_url"]}
+    attached = [asset["browser_download_url"] for asset in release.get("assets", [])
+                if re.fullmatch(r"Match-Analyzer-v[\d.]+\.zip", asset.get("name", ""))]
+    return {"version": tag.lstrip("v"), "tag": tag, "zip": attached[0] if attached else release["zipball_url"],
+            "page": release["html_url"]}
 
 
 # ---------------------------------------------------------------- installing a release
@@ -161,6 +165,10 @@ def install(archive_bytes, expected_version, old_version):
         (PROJECT / path).unlink(missing_ok=True)
     TOOLS.mkdir(exist_ok=True)
     MANIFEST.write_text(json.dumps(sorted(files), indent=1), encoding="utf-8")
+    # it worked, so only this update's backup is worth keeping: older ones go
+    for older in BACKUP.iterdir():
+        if older.is_dir() and older != backup:
+            shutil.rmtree(older, ignore_errors=True)
     return len(changed) + len(removed)
 
 
@@ -189,7 +197,8 @@ def check_for_update(asked=False):
                 f"a git checkout, so `git pull`, or `uv run updater.py` to install the release): {release['page']}"}
     log(f"updating Match Analyzer from v{version} to v{release['version']}...")
     try:
-        count = install(fetch(release["zip"], timeout=120), release["version"], version)
+        archive = fetch(release["zip"], timeout=120, accept="application/octet-stream")
+        count = install(archive, release["version"], version)
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         return {**result, "state": "available",
                 "message": f"v{release['version']} is available but the update failed ({error}): {release['page']}"}
