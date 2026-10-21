@@ -11,7 +11,7 @@ everything up by itself. It installs [uv](https://docs.astral.sh/uv/) into `.too
 Python and the libraries it needs. ffmpeg comes bundled through `imageio-ffmpeg`. The app then opens in your browser:
 pick a video, choose options and press Analyse.
 
-False positives are unfortunately pretty common, this tool isn't meant to replace your own match analysis, but hopefully help you get a jumping off point, and help organize and categorize plays for review.
+False positives are unfortunately pretty common, this tool isn't meant to replace your own match analysis, but instead hopefully get you a jumping off point and help organize and categorize plays for review.
 
 ### Updates
 
