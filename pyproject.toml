@@ -8,6 +8,11 @@ dependencies = [
     "imageio-ffmpeg>=0.5",  
 ]
 
+# The app checks this repository's releases on start and updates itself when one is newer than `version` above
+# (see updater.py). To publish an update: raise `version`, commit, then make a GitHub release tagged v<version>.
+[project.urls]
+Repository = "https://github.com/oneillryan93/Filmroom-Helper"
+
 [project.optional-dependencies]
 ai = [
     "onnxruntime>=1.23.2",

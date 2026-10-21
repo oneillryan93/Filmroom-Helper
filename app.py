@@ -7,6 +7,7 @@ before this starts, so the page only has to check they're there. It serves on ht
 there you can:
   - pick a video, set options and run the analysis, watching its progress
   - open the results viewer for any past run
+On start it also checks GitHub for a newer release and updates itself (see updater.py).
 
 Sections: settings / checking the environment / finding videos and past runs / jobs (one run at a time) /
 desktop helpers / the web server / start-up.
@@ -28,6 +29,8 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import updater
+
 # ---------------------------------------------------------------- settings
 
 PROJECT = Path(__file__).resolve().parent
@@ -46,6 +49,7 @@ AI_OPTIONS = ("scoreboard",)                           # options that need it (l
 AI_MARKER = PROJECT / ".models" / "ai-enabled"         # the launchers add `--extra ai` while this exists
 
 OPEN_IN_BROWSER = True  # open the page and finished results by themselves (off with --no-browser)
+UPDATE = {"version": None, "state": "off", "message": ""}  # what the update check on start found
 TOKEN = secrets.token_urlsafe(24)  # API calls must carry this, so other websites can't drive the app
 NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # Windows: don't flash a console per command
 
@@ -444,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(409, {"error": str(error)})
 
     def get_status(self, query):
-        return {**status(), "home": str(PROJECT), "output": str(OUTPUT), "os": os.name}
+        return {**status(), "home": str(PROJECT), "output": str(OUTPUT), "os": os.name, "update": UPDATE}
 
     def get_options(self, query):
         return {"options": script_options()}
@@ -531,8 +535,9 @@ def main():
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-browser", action="store_true",
                         help="don't open the page (or finished results) automatically")
+    parser.add_argument("--no-update", action="store_true", help="don't check GitHub for a newer version")
     args = parser.parse_args()
-    global OPEN_IN_BROWSER
+    global OPEN_IN_BROWSER, UPDATE
     OPEN_IN_BROWSER = not args.no_browser
 
     try:
@@ -544,6 +549,15 @@ def main():
                 webbrowser.open(f"http://127.0.0.1:{args.port}/")
             return
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)  # port taken by something else: any free one
+    # only once we know no other copy is running, as an update replaces the files under it
+    UPDATE = {**UPDATE, "version": updater.current_version(), "message": "update check turned off"}
+    if not args.no_update:
+        UPDATE = updater.check_for_update()
+        print(f"Match Analyzer v{UPDATE['version']}: {UPDATE['message']}")
+    if UPDATE["state"] == "updated":
+        server.server_close()
+        print("Restarting into the new version...")
+        sys.exit(updater.RESTART_CODE)  # the launchers start it again (by hand: just start it again)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Match Analyzer is running at {url}\n"
           "Keep this window open while you use it; close it (or Ctrl+C) to stop.")

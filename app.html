@@ -22,6 +22,9 @@ body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--backg
 main { display: flex; flex-direction: column; gap: 16px; max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
 header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 header .subtitle { color: var(--dim); }
+header .version { margin-left: auto; color: var(--dim); font-size: 12px; }
+header .version.notice { color: var(--warning); }
+header .version a { color: inherit; }
 h1 { margin: 0; font-size: 22px; }
 h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 16px; }
 .card { padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
@@ -137,6 +140,7 @@ summary { color: var(--dim); cursor: pointer; }
   <header>
     <h1>Match Analyzer</h1>
     <span class="subtitle">Find the big moments and every whistle in a match video</span>
+    <span class="version" id="version"></span>
   </header>
 
   <section class="card" id="environment">
@@ -276,6 +280,7 @@ async function refreshEnvironment() {
   }
   renderChecks();
   renderAiStatus();
+  renderVersion();
   if (environment.ready) await loadAnalyseForm();
   updateAnalyseButton();
 }
@@ -298,6 +303,18 @@ function renderChecks() {
   $("environment-checks").classList.toggle("hidden", ready && !showCheckDetails);
   $("environment-details-toggle").classList.toggle("hidden", !ready);
   $("analyse").classList.toggle("hidden", !ready);
+}
+
+// This copy's version, and what the update check on start found (updater.py)
+function renderVersion() {
+  const update = environment.update || {};
+  const note = $("version");
+  note.className = "version" + (update.state === "available" ? " notice" : "");
+  if (!update.version) return;
+  const link = update.message.match(/https:\/\/\S+$/);
+  const text = escapeHtml(link ? update.message.slice(0, link.index) : update.message);
+  note.innerHTML = `v${escapeHtml(update.version)}` + (text ? ` &middot; ${text}` : "") +
+    (link ? `<a href="${escapeHtml(link[0])}" target="_blank" rel="noopener">release notes</a>` : "");
 }
 
 function renderAiStatus() {

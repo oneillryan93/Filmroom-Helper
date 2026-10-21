@@ -11,6 +11,24 @@ everything up by itself, with no prompts: it installs [uv](https://docs.astral.s
 Python and the libraries it needs. ffmpeg comes bundled through `imageio-ffmpeg`. The app then opens in your browser:
 pick a video, choose options and press Analyse.
 
+### Updates
+
+Each time the app starts it checks this project's
+[GitHub releases](https://github.com/oneillryan93/Filmroom-Helper/releases). If the latest one is newer than the
+`version` in `pyproject.toml`, it downloads it, replaces the program's files, and restarts into the new version.
+This takes a few seconds, and the version shows at the top of the app's page. Your results (`output/`), videos
+(`resources/`) and the add-ons the launchers set up are never touched. The files an update replaces are kept in
+`.tools/backup/<old version>/`. If GitHub can't be reached, the app just starts as it is.
+
+Nothing needs git: a release is downloaded as a zip. If you downloaded a release, updates just happen. A git
+checkout (a folder with `.git`, i.e. a developer's copy) isn't updated on start, so local changes are safe. It only
+says a newer release exists. There, `git pull` updates it, or `uv run updater.py` installs the latest release
+directly. `uv run updater.py` works in any copy and checks and updates right away. To turn the check on start off,
+start the app with `--no-update` or set `MATCH_ANALYZER_NO_UPDATE=1`.
+
+To publish an update: raise `version` in `pyproject.toml`, commit and push, then create a GitHub release tagged
+`v<version>` (e.g. `v0.0.2`). Pre-releases and drafts are ignored.
+
 From a terminal:
 
 ```
@@ -24,6 +42,7 @@ uv run find_moments.py --help                      # every option
 ```
 find_moments.py        the command line: options, then main() as named steps
 app.py / app.html      the local app (setup checks, options form, runs)
+updater.py             checking GitHub releases on start and updating to a newer one
 analyzer/
   ffmpeg.py            running ffmpeg: decoding, length, frame size
   timecodes.py         Timecode reformatting helpers
@@ -252,6 +271,10 @@ All of it is saved in review.json, so the next run's moments.csv has the same `s
 - The camera-pan cue uses phase correlation: C. D. Kuglin and D. C. Hines, "The phase correlation image alignment method", *Proc. IEEE Int. Conf. on Cybernetics and Society*, 163–165 (1975).
 
 ## Privacy
+
+Your videos and results never leave your computer. The only things the app downloads are its setup (uv, Python and
+the libraries), the optional AI add-on, and updates. The update check on start asks GitHub for the latest release
+and sends nothing about you or your matches.
 
 Match footage, clips and moment lists should be kept private if you are forking this repository. Don't publish footage of players, *especially* of those under 18, without their consent.
 

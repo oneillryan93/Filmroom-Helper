@@ -26,9 +26,18 @@ exit /b 1
 rem keep the AI add-on once it has been turned on in the app
 set "EXTRA="
 if exist "%~dp0.models\ai-enabled" set "EXTRA=--extra ai"
-"%UV%" run %EXTRA% app.py %*
-if errorlevel 1 pause
-exit /b
+rem The app checks GitHub for a newer version on start and, after updating itself (this file too), exits with 75
+rem to be started again. It all runs as one block because cmd reads a whole block before running it, so the file
+rem changing underneath can't confuse it; the new copy of this file then takes over.
+(
+  "%UV%" run %EXTRA% app.py %*
+  if errorlevel 75 if not errorlevel 76 (
+    call "%~f0" %*
+    exit /b
+  )
+  if errorlevel 1 pause
+  exit /b
+)
 
 :finduv
 rem This folder's own copy first, then one already on the computer

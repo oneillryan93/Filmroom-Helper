@@ -4,6 +4,7 @@
 # added to PATH), then uv sets up Python and the libraries in pyproject.toml and starts the app, which opens in
 # your browser. Only the first start downloads anything.
 cd "$(dirname "$0")" || exit 1
+SELF="$(pwd)/$(basename "$0")"
 LOCAL_UV="$(pwd)/.tools/uv"
 
 find_uv() {
@@ -31,5 +32,12 @@ if [ -z "$UV" ]; then
 fi
 
 # keep the AI add-on once it has been turned on in the app
-if [ -f .models/ai-enabled ]; then exec "$UV" run --extra ai app.py "$@"; fi
-exec "$UV" run app.py "$@"
+EXTRA=""
+if [ -f .models/ai-enabled ]; then EXTRA="--extra ai"; fi
+"$UV" run $EXTRA app.py "$@"
+status=$?
+# The app checks GitHub for a newer version on start and, after updating itself, exits with 75 to be started
+# again: run the new copy of this file. (The update renames new files into place, so this shell kept reading
+# its old copy until now.)
+if [ "$status" -eq 75 ]; then exec sh "$SELF" "$@"; fi
+exit "$status"
