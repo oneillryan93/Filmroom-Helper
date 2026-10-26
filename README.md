@@ -23,19 +23,6 @@ This takes a few seconds, and the version shows at the top of the app's page. Yo
 `.tools/backup/<old version>/`. Only the most recent update's backup is kept: older ones are deleted once an
 update succeeds. If GitHub can't be reached, the app just starts as it is.
 
-Nothing needs git: a release is downloaded as a zip. If you downloaded a release, updates just happen. A git
-checkout (a folder with `.git`, i.e. a developer's copy) isn't updated on start, so local changes are safe. It only
-says a newer release exists. There, `git pull` updates it, or `uv run updater.py` installs the latest release
-directly. `uv run updater.py` works in any copy and checks and updates right away. To turn the check on start off,
-start the app with `--no-update` or set `MATCH_ANALYZER_NO_UPDATE=1`.
-
-To publish an update, push your changes, then on GitHub go to **Actions → Release → Run workflow** and pick
-**patch** (0.0.1 → 0.0.2), **minor** (→ 0.1.0) or **major** (→ 1.0.0). The workflow
-([.github/workflows/release.yml](.github/workflows/release.yml)) raises the version in `pyproject.toml` and
-`uv.lock`, commits and tags it, and publishes the release "Match Analyzer v<version>". The release lists the changes
-since the last one, with `Match-Analyzer-v<version>.zip` attached: the download for new users, and what the
-updater installs. Pull afterwards to get the version commit locally. A release made by hand also works, as long as
-it's tagged `v<version>` and matches `pyproject.toml`. Pre-releases and drafts are ignored.
 
 From a terminal:
 
