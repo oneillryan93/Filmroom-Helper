@@ -1,6 +1,6 @@
 # Match Analyzer
 
-Finds the key moments and every referee whistle in a full match video. Currently is geared heavily only towards rugby. It builds a results page where you can
+Finds the key moments and referee whistles in a full match video. Currently is geared only towards rugby. It builds a results page where you can
 watch the whole match, jump between moments, and review them: label, rename, mark false positives, add your own.
 It also keeps the score: from the on-screen scoreboard if there is one, and from the scoring plays you enter.
 
@@ -63,7 +63,7 @@ are made, Chapter 3 covers how they're combined, and Chapter 4 covers how your r
 
 ## Chapter 1: The audio component ([analyzer/audio.py](analyzer/audio.py))
 
-The soundtrack gives two cues, **loudness** and **whistle**. It also produces the list of every whistle blast.
+The soundtrack gives two cues, **loudness** and **whistle**. It also produces the list of (hopefully) every whistle blast.
 
 ### 1.1 Getting the sound
 ffmpeg turns the soundtrack into one long list of numbers: mono, 16,000 samples per second. That rate is plenty,
@@ -71,7 +71,7 @@ because the highest sound we care about (the whistle) sits below 4.5 kHz.
 
 ### 1.2 Loudness
 For each whole second, the program takes the average strength of the sound (its RMS) and converts it to decibels.
-Crowd roars, cheers and shouting all show up as loud seconds.
+Cheers and shouting all show up as loud seconds.
 
 ### 1.3 Breaking sound into pitches
 The whistle can't be found by loudness alone, because a shout can be louder. The program splits the sound into
@@ -162,7 +162,7 @@ capped at 8 so one freak second can't dominate, then lightly smoothed over 3 sec
 
 ### 3.3 Combining
 The four spike scores are blended with weights: loud 1.0, whistle 1.0, camera 0.7, motion 0.5 (you can change them
-with `--weights`). The total is scaled so a typical real moment lands around 2. This per-second **score** is the
+with `--weights`). The total is scaled so a typical real moment should land around 2. This per-second **score** is the
 curve on the viewer's timeline and the `score` column in scores.csv. The cue that contributed most to a moment is
 its **main cue**.
 
